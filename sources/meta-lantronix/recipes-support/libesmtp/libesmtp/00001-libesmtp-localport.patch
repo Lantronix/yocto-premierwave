@@ -1,0 +1,38 @@
+--- libesmtp-1.0.6/protocol.c	2017-10-12 15:44:04.117766825 -0700
++++ libesmtp-1.0.6-ltrx/protocol.c	2017-10-13 11:12:06.725888966 -0700
+@@ -229,6 +229,35 @@
+ 	  set_errno (errno);
+ 	  continue;
+ 	}
++
++    char* lesmtp_port = getenv("LIBESMTP_LOCALPORT");
++     if(lesmtp_port)
++    {
++        /*bind before connect*/
++        int portno = atoi(lesmtp_port);
++        struct sockaddr_storage my_addr;
++        if(AF_INET6 == addrs->ai_family)
++        {
++            struct sockaddr_in6 *pS6Addr = (struct sockaddr_in6 *)&my_addr;
++            memset(pS6Addr, 0, sizeof(*pS6Addr));
++            pS6Addr->sin6_family = AF_INET6;
++            memcpy(pS6Addr->sin6_addr.s6_addr, in6addr_any.s6_addr, sizeof(pS6Addr->sin6_addr.s6_addr));
++            pS6Addr->sin6_port = htons(portno);
++            pS6Addr->sin6_scope_id = 0;
++        }
++        else
++        {
++            struct sockaddr_in *pS4Addr = (struct sockaddr_in *)&my_addr;
++            pS4Addr->sin_family = AF_INET;
++            pS4Addr->sin_addr.s_addr = INADDR_ANY;
++            pS4Addr->sin_port = htons(portno);
++        }
++        if (bind(sd, (struct sockaddr *) &my_addr,
++                    (AF_INET6==addrs->ai_family)?sizeof(struct sockaddr_in6):sizeof(struct sockaddr_in)) < 0) {
++            set_errno (errno);
++            continue;
++        }
++    }
+       if (connect (sd, addrs->ai_addr, addrs->ai_addrlen) < 0)
+ 	{
+ 	  /* Failed to connect.  Close the socket and try again.  */

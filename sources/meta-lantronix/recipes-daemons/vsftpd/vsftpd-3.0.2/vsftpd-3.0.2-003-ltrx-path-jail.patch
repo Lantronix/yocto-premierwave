@@ -1,0 +1,77 @@
+diff -Naur vsftpd-3.0.2/access.c ltrx-vsftpd-3.0.2/access.c
+--- vsftpd-3.0.2/access.c	2011-02-15 14:35:49.000000000 -0800
++++ ltrx-vsftpd-3.0.2/access.c	2015-01-23 16:35:18.174060666 -0800
+@@ -12,12 +12,61 @@
+ #include "tunables.h"
+ #include "str.h"
+ 
++#include <libgen.h>
++#include <limits.h>
++#include <string.h>
++
++#define PATH_JAIL   "/ltrx_user" 
++
++static void
++jail_filepath(struct mystr* p_filename)
++{
++  char rpath[PATH_MAX];
++  struct mystr str_rpath = INIT_MYSTR;
++
++  realpath(str_getbuf(p_filename), rpath);
++  str_alloc_text(&str_rpath, rpath);
++  if (str_equal_text(&str_rpath, PATH_JAIL))
++  {
++    str_alloc_text(p_filename, PATH_JAIL);
++  }
++  else
++  {
++    char* path;
++    char* fname;
++    struct mystr str_path = INIT_MYSTR;
++    struct mystr str_fname = INIT_MYSTR;
++    struct mystr str_end = INIT_MYSTR;
++
++    path = (char *)str_strdup(&str_rpath);
++    str_alloc_text(&str_path, dirname(path));
++    fname = (char *)str_strdup(&str_rpath);
++    str_alloc_text(&str_fname, basename(fname));
++    if (strncmp(str_getbuf(&str_path), PATH_JAIL, strlen(PATH_JAIL)) != 0)
++    {
++      str_alloc_text(p_filename, PATH_JAIL);
++      str_append_str(p_filename, &str_path);
++      if (str_get_char_at(p_filename, str_getlen(p_filename) - 1) != '/')
++      {
++        str_append_char(p_filename, '/');
++      }
++      str_append_str(p_filename, &str_fname);
++    }
++    str_free(&str_fname);
++    str_free(&str_path);
++    vsf_sysutil_free(fname);
++    vsf_sysutil_free(path);
++  }
++  str_free(&str_rpath);
++}
++
+ int
+-vsf_access_check_file(const struct mystr* p_filename_str)
++vsf_access_check_file(struct mystr* p_filename_str)
+ {
+   static struct mystr s_access_str;
+   unsigned int iters = 0;
+ 
++  jail_filepath(p_filename_str);
+   if (!tunable_deny_file)
+   {
+     return 1;
+--- vsftpd-3.0.2/access.h 2008-02-01 17:30:39.000000000 -0800
++++ ltrx-vsftpd-3.0.2/access.h  2015-01-23 16:48:23.908477175 -0800
+@@ -12,7 +12,7 @@
+  * RETURNS
+  * Returns 1 if access is granted, otherwise 0.
+  */
+-int vsf_access_check_file(const struct mystr* p_filename_str);
++int vsf_access_check_file(struct mystr* p_filename_str);
+
+ /* vsf_access_check_file_visible()
+  * PURPOSE

@@ -1,0 +1,2 @@
+#!/bin/sh
+ltrx_getifinfo CLOCK_UPDATE

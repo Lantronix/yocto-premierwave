@@ -1,0 +1,41 @@
+#!/bin/sh
+
+# ltrx-radio-up:
+#   Turns on overall power to the bcm4339 device.
+#
+# RADIO_POWER_EN    (GPIO PC7, Power to radio = active LOW)
+# BT_PWR_DN         (GPIO PC10, Bluetooth On = active HIGH)
+# WL_PWR_DN         (GPIO PC9, Wlan On = active HIGH)
+# WL_32KHZ          (PWM2 on PB13 peripheral B)
+#
+# Note: Upon exit 0, wlan and bt are still held in reset and 32k clock is off
+
+RADIO_DEVICES_FILE=/tmp/radio.devices
+RADIO_UP_FILE=/tmp/radio.up
+
+if [ -e $RADIO_UP_FILE ]; then
+#	echo "Radio is already up"
+	exit 0
+fi
+
+if [ ! -e $RADIO_DEVICES_FILE ]; then
+#	echo "Exporting radio devices"
+	ltrx-radio-export-devices
+	if [ "$?" -ne "0" ] ; then
+		echo "Failed to export radio devices" >&2
+		exit 1
+	fi
+fi
+
+# supply VBAT to radio - must be before VDDIO
+echo 0 > /sys/class/gpio/pioC7/value
+usleep 10000
+# supply VDDIO to radio
+# set PMIC output 6 to 3.3v and enable it
+/usr/bin/i2cset -y 0 0x5b 0x60 0x39 b
+/usr/bin/i2cset -y 0 0x5b 0x61 0xc1 b
+
+# At this point, radio power and 32k clock are on, but wlan and bt are held in reset
+touch $RADIO_UP_FILE
+
+exit 0

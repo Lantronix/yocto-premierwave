@@ -1,0 +1,64 @@
+diff -Naur vsftpd-3.0.2/postlogin.c ltrx-vsftpd-3.0.2/postlogin.c
+--- vsftpd-3.0.2/postlogin.c	2015-01-23 16:34:26.196016354 -0800
++++ ltrx-vsftpd-3.0.2/postlogin.c	2015-01-23 16:37:15.681629445 -0800
+@@ -28,6 +28,10 @@
+ #include "vsftpver.h"
+ #include "opts.h"
+ 
++#include <libgen.h>
++#include <limits.h>
++#include <stdio.h>
++
+ /* Private local functions */
+ static void handle_pwd(struct vsf_session* p_sess);
+ static void handle_cwd(struct vsf_session* p_sess);
+@@ -1004,6 +1008,41 @@
+ }
+ 
+ static void
++ltrx_translate_fwname(struct mystr* p_filename)
++{
++  char rpath[PATH_MAX];
++  char* path;
++  char* fname;
++  struct mystr str_rpath = INIT_MYSTR;
++  struct mystr str_path = INIT_MYSTR;
++  struct mystr str_fname = INIT_MYSTR;
++  struct mystr str_end = INIT_MYSTR;
++
++  realpath(str_getbuf(p_filename), rpath);
++  str_alloc_text(&str_rpath, rpath);
++
++  path = (char*) str_strdup(&str_rpath);
++  fname = (char*) str_strdup(&str_rpath);
++  str_alloc_text(&str_path, dirname(path));
++  str_alloc_text(&str_fname, basename(fname));
++
++  if (str_equal_text(&str_path, "/ltrx_user") && str_getlen(&str_fname) > 4)
++  {
++    str_right(&str_fname, &str_end, 4);
++    if (str_equal_text(&str_end, ".rom"))
++    {
++      str_alloc_text(p_filename, "/tmp/firmware.rom");
++    }
++    str_free(&str_end);
++  }
++  str_free(&str_rpath);
++  str_free(&str_fname);
++  str_free(&str_path);
++  vsf_sysutil_free(fname);
++  vsf_sysutil_free(path);
++}
++
++static void
+ handle_upload_common(struct vsf_session* p_sess, int is_append, int is_unique)
+ {
+   static struct vsf_sysutil_statbuf* s_p_statbuf;
+@@ -1036,6 +1075,7 @@
+     vsf_cmdio_write(p_sess, FTP_NOPERM, "Permission denied.");
+     return;
+   }
++  ltrx_translate_fwname(p_filename);
+   /* NOTE - actual file permissions will be governed by the tunable umask */
+   /* XXX - do we care about race between create and chown() of anonymous
+    * upload?

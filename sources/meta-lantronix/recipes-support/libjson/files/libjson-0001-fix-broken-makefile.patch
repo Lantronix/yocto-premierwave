@@ -1,0 +1,26 @@
+--- libjson/makefile	2012-05-30 05:15:42.000000000 +0530
++++ libjson_mod/makefile	2017-05-09 21:00:58.196970747 +0530
+@@ -169,9 +169,9 @@
+ 
+ # Usage check
+ ifdef CXXFLAGS
+-ifdef BUILD_TYPE
+-	$(error CXXFLAGS and BUILD_TYPE are mutually exclusive)
+-endif
++#ifdef BUILD_TYPE
++#	$(error CXXFLAGS and BUILD_TYPE are mutually exclusive)
++#endif
+ endif
+ 
+ # BUILD_TYPE specific settings
+@@ -187,8 +187,8 @@
+ # SHARED specific settings
+ ifeq ($(SHARED), 1)
+ 	libname_shared               = $(libname).$(suffix_shared)
+-	libname_shared_major_version = $(libname_shared).$(major_version)
+-	lib_target                   = $(libname_shared_major_version).$(minor_version)
++	libname_shared_major_version = $(libname_shared)
++	lib_target                   = $(libname_shared_major_version)
+ 	objdir                      := $(objdir)_shared
+ 	CXXFLAGS                    := $(CXXFLAGS) $(cxxflags_shared)
+ else

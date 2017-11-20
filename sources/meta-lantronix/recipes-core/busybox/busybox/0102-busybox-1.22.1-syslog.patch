@@ -1,0 +1,220 @@
+diff -Naur busybox-1.22.1/sysklogd/klogd.c busybox-1.22.1_syslog/sysklogd/klogd.c
+--- busybox-1.22.1/sysklogd/klogd.c	2014-01-09 10:15:44.000000000 -0800
++++ busybox-1.22.1_syslog/sysklogd/klogd.c	2015-11-06 15:52:45.462345116 -0800
+@@ -26,7 +26,7 @@
+ 
+ #include "libbb.h"
+ #include <syslog.h>
+-
++#include <unistd.h>
+ 
+ /* The Linux-specific klogctl(3) interface does not rely on the filesystem and
+  * allows us to change the console loglevel. Alternatively, we read the
+@@ -193,6 +193,9 @@
+ 	/* We want klogd_read to not be restarted, thus _norestart: */
+ 	bb_signals_recursive_norestart(BB_FATAL_SIGS, record_signo);
+ 
++        //LTRX:
++        sleep(4);  /* wait for syslogd up and running */
++ 
+ 	syslog(LOG_NOTICE, "klogd started: %s", bb_banner);
+ 
+ 	write_pidfile(CONFIG_PID_FILE_PATH "/klogd.pid");
+diff -Naur busybox-1.22.1/sysklogd/syslogd.c busybox-1.22.1_syslog/sysklogd/syslogd.c
+--- busybox-1.22.1/sysklogd/syslogd.c	2014-01-09 10:15:44.000000000 -0800
++++ busybox-1.22.1_syslog/sysklogd/syslogd.c	2015-11-06 16:52:05.234436558 -0800
+@@ -67,6 +67,9 @@
+ 
+ #if ENABLE_FEATURE_REMOTE_LOG
+ #include <netinet/in.h>
++/* LTRX: 10/14/2011 Added following includes for res_init() support */
++#include <arpa/nameser.h>
++#include <resolv.h>
+ #endif
+ 
+ #if ENABLE_FEATURE_IPC_SYSLOG
+@@ -75,6 +78,7 @@
+ #include <sys/shm.h>
+ #endif
+ 
++#define DEFAULT_LOG_FILE_PATH "/var/log/messages" /* LTRX: created define for default log file path */
+ 
+ #define DEBUG 0
+ 
+@@ -88,7 +92,7 @@
+ 
+ enum {
+ 	MAX_READ = CONFIG_FEATURE_SYSLOGD_READ_BUFFER_SIZE,
+-	DNS_WAIT_SEC = 2 * 60,
++	DNS_WAIT_SEC = 60, /* LTRX: 10/14/2011 Changed DNS_WAIT_SECS to 60 from 120. */
+ };
+ 
+ /* Semaphore operation structures */
+@@ -182,7 +186,7 @@
+ 
+ static const struct init_globals init_data = {
+ 	.logFile = {
+-		.path = "/var/log/messages",
++		.path = DEFAULT_LOG_FILE_PATH,  /* LTRX: used define instead of string constant */ 
+ 		.fd = -1,
+ 	},
+ #ifdef SYSLOGD_MARK
+@@ -596,6 +600,7 @@
+ 		if (G.last_log_time != now) {
+ 			G.last_log_time = now;
+ 			close(log_file->fd);
++                       log_file->fd = -1; /*LTRX: sets log fd to -1 if closed.*/
+ 			goto reopen;
+ 		}
+ 	} else {
+@@ -661,6 +666,7 @@
+ 			fcntl(log_file->fd, F_SETLKW, &fl);
+ #endif
+ 			close(log_file->fd);
++                       log_file->fd = -1; /*LTRX: sets log fd to -1 if closed.*/
+ 			goto reopen;
+ 		}
+ 		ftruncate(log_file->fd, 0);
+@@ -717,11 +723,11 @@
+ 	}
+ 
+ 	if (option_mask32 & OPT_small)
+-		sprintf(G.printbuf, "%s %s\n", timestamp, msg);
++		sprintf(G.printbuf, "%s %s\r\n", timestamp, msg); /*LTRX: Append carriage return and newline to syslog entries.*/
+ 	else {
+ 		char res[20];
+ 		parse_fac_prio_20(pri, res);
+-		sprintf(G.printbuf, "%s %.64s %s %s\n", timestamp, G.hostname, res, msg);
++		sprintf(G.printbuf, "%s %.64s %s %s\r\n", timestamp, G.hostname, res, msg); /*LTRX: Append carriage return and newline to syslog entries.*/
+ 	}
+
+ 	/* Log message locally (to file or shared mem) */
+@@ -746,7 +752,20 @@
+ #if ENABLE_FEATURE_IPC_SYSLOG
+ 		if ((option_mask32 & OPT_circularlog) && G.shbuf) {
+ 			log_to_shmem(G.printbuf);
+-			return;
++                /*
++                    !!!!
++                    LTRX: If local or serial line logging is enabled, we want to keep
++                          going instead of returning right away. We can determine if
++                          one of these log methods is enabled by checking to see if
++                          the log file name global has changed from its default value.
++                          This is a bit of a kludge, though it is much simpler than
++                          modifying syslogd to take an additional command line option.
++                    !!!!
++                */
++                   if (! strcmp(G.logFile.path, DEFAULT_LOG_FILE_PATH))
++                   {
++                       return;
++                   } 
+ 		}
+ #endif
+ 		log_locally(now, G.printbuf, &G.logFile);
+@@ -852,6 +871,8 @@
+ 		if ((now - rh->last_dns_resolve) < DNS_WAIT_SEC)
+ 			return -1;
+ 		rh->last_dns_resolve = now;
++                /* LTRX: 10/14/2011: reload DNS configuration with res_init() prior to host2sockaddr() */
++                res_init();
+ 		rh->remoteAddr = host2sockaddr(rh->remoteHostname, 514);
+ 		if (!rh->remoteAddr)
+ 			return -1;
+@@ -860,12 +881,21 @@
+ }
+ #endif
+ 
++static void syslog_sighandler(int signo)
++{
++       if (G.logFile.fd >= 0) {
++               close(G.logFile.fd);
++       }
++       record_signo(signo);
++}
++
+ static void do_syslogd(void) NORETURN;
+ static void do_syslogd(void)
+ {
+ 	int sock_fd;
+ #if ENABLE_FEATURE_REMOTE_LOG
+ 	llist_t *item;
++        int pri = (LOG_USER | LOG_NOTICE);
+ #endif
+ #if ENABLE_FEATURE_SYSLOGD_DUP
+ 	int last_sz = -1;
+@@ -876,8 +906,8 @@
+ #endif
+ 
+ 	/* Set up signal handlers (so that they interrupt read()) */
+-	signal_no_SA_RESTART_empty_mask(SIGTERM, record_signo);
+-	signal_no_SA_RESTART_empty_mask(SIGINT, record_signo);
++	signal_no_SA_RESTART_empty_mask(SIGTERM, syslog_sighandler);/*LTRX: To close open file handle in termination signal handler.*/
++	signal_no_SA_RESTART_empty_mask(SIGINT, syslog_sighandler);
+ 	//signal_no_SA_RESTART_empty_mask(SIGQUIT, record_signo);
+ 	signal(SIGHUP, SIG_IGN);
+ #ifdef SYSLOGD_MARK
+@@ -948,25 +978,49 @@
+ 				if (rh->remoteFD == -1)
+ 					continue;
+ 			}
+-
++                        // LTRX: check severity code with configured log level
++                        {
++                          char *endbuf = recvbuf + sz;
++                          char *p = recvbuf;
++  
++                          while (p < endbuf) 
++                            {
++                              if (*p == '<') {
++                                /* Parse the magic priority number */
++                                pri = bb_strtou(p + 1, &p, 10);
++                                if (*p == '>')
++                                  p++;
++                                if (pri & ~(LOG_FACMASK | LOG_PRIMASK))
++                                  pri = (LOG_USER | LOG_NOTICE);
++                                break;
++                              }
++                              else
++                                p++;
++                            }
++                        }
+ 			/* Send message to remote logger.
+ 			 * On some errors, close and set remoteFD to -1
+ 			 * so that DNS resolution is retried.
+ 			 */
+-			if (sendto(rh->remoteFD, recvbuf, sz+1,
+-					MSG_DONTWAIT | MSG_NOSIGNAL,
+-					&(rh->remoteAddr->u.sa), rh->remoteAddr->len) == -1
+-			) {
+-				switch (errno) {
+-				case ECONNRESET:
+-				case ENOTCONN: /* paranoia */
+-				case EPIPE:
+-					close(rh->remoteFD);
+-					rh->remoteFD = -1;
+-					free(rh->remoteAddr);
+-					rh->remoteAddr = NULL;
+-				}
+-			}
++                        if (LOG_PRI(pri) < G.logLevel)
++                        {
++
++                            if (sendto(rh->remoteFD, recvbuf, sz+1,
++                                MSG_DONTWAIT | MSG_NOSIGNAL,
++                                &(rh->remoteAddr->u.sa), rh->remoteAddr->len) == -1
++                            ) {
++                                switch (errno) {
++ 
++                                    case ECONNRESET:
++                                    case ENOTCONN: /* paranoia */
++                                    case EPIPE:
++                                    close(rh->remoteFD);
++                                    rh->remoteFD = -1;
++                                      free(rh->remoteAddr);
++                                    rh->remoteAddr = NULL;
++                                }
++              		    }
++                        }
+ 		}
+ #endif
+ 		if (!ENABLE_FEATURE_REMOTE_LOG || (option_mask32 & OPT_locallog)) {

@@ -1,0 +1,55 @@
+diff -Naur miniupnpd-1.9.20141209_orig/Makefile miniupnpd-1.9.20141209_mod/Makefile
+--- miniupnpd-1.9.20141209_orig/Makefile	2014-06-30 17:33:05.000000000 +0530
++++ miniupnpd-1.9.20141209_mod/Makefile	2015-04-29 14:25:19.320389769 +0530
+@@ -154,7 +154,7 @@
+ LIBS += -lsocket -lnsl -lkstat -lresolv
+ .endif
+ 
+-LIBS += -lssl -lcrypto
++#LIBS += -lssl -lcrypto
+ 
+ # set PREFIX variable to install in the wanted place
+ 
+diff -Naur miniupnpd-1.9.20141209_orig/Makefile.linux miniupnpd-1.9.20141209_mod/Makefile.linux
+--- miniupnpd-1.9.20141209_orig/Makefile.linux	2014-10-21 19:45:13.000000000 +0530
++++ miniupnpd-1.9.20141209_mod/Makefile.linux	2015-04-29 14:25:23.728389664 +0530
+@@ -88,6 +88,7 @@
+ ARCH ?= $(shell uname -m | grep -q "x86_64" && echo 64)
+ ifdef IPTABLESPATH
+ CPPFLAGS := $(CPPFLAGS) -I$(IPTABLESPATH)/include/
++CPPFLAGS += $(CPPFLAGS) -I$(LIBNFNETLINKPATH)/include/
+ LDFLAGS := $(LDFLAFGS) -L$(IPTABLESPATH)/libiptc/
+ # get iptables version and set IPTABLES_143 macro if needed
+ ifeq ($(TARGET_OPENWRT),)
+@@ -101,6 +102,7 @@
+ CPPFLAGS := $(CPPFLAGS) -DIPTABLES_143
+ # the following sucks, but works
+ LDLIBS = $(IPTABLESPATH)/libiptc/.libs/libip4tc.o
++LDLIBS += $(IPTABLESPATH)/libiptc/.libs/libip6tc.o
+ #LDLIBS = $(IPTABLESPATH)/libiptc/.libs/libiptc.a
+ else # ifeq ($(TEST), 1)
+ LDLIBS = $(IPTABLESPATH)/libiptc/libiptc.a
+@@ -127,18 +129,21 @@
+ CPPFLAGS := $(CPPFLAGS) -DIPTABLES_143
+ LDLIBS = -liptc
+ TESTIP4TC := $(shell test -f /lib/libip4tc.so && echo 1)
++TESTIP6TC := $(shell test -f /lib/libip6tc.so && echo 1)
+ ifeq ($(TESTIP4TC), 1)
+ LDLIBS := $(LDLIBS) -lip4tc
+ endif # ($(TESTIP4TC), 1)
+ TESTIP6TC := $(shell test -f /lib/libip6tc.so && echo 1)
+ ifeq ($(TESTIP6TC), 1)
+-LDLIBS := $(LDLIBS) -lip6tc
++LDLIBS += $(LDLIBS) -lip6tc
+ endif # ($(TESTIP6TC), 1)
+ endif # ($(TEST), 1)
+ endif # ifdef IPTABLESPATH
+ endif # ifdef PCFILE_FOUND
+ 
+-LDLIBS += -lnfnetlink
++LDLIBS += -L$(LIBNFNETLINKPATH)/src/.libs -lnfnetlink
++LDLIBS += -L$(OPENSSLPATH) -lssl -lcrypto
++
+ 
+ TEST := $(shell $(PKG_CONFIG) --atleast-version=1.0.2 libnetfilter_conntrack && $(PKG_CONFIG) --atleast-version=1.0.3 libmnl && echo 1)
+ ifeq ($(TEST),1)

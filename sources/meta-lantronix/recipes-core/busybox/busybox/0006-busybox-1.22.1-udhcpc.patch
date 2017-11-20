@@ -1,0 +1,42 @@
+--- busybox-1.22.1/networking/udhcp/dhcpc.c	2014-01-09 10:15:44.000000000 -0800
++++ busybox-1.22.1-udhcp/networking/udhcp/dhcpc.c	2014-09-15 15:42:39.256249204 -0700
+@@ -135,7 +135,7 @@
+ 	}
+ 	return i;
+ }
+-
++#if ENABLE_FEATURE_UDHCPC_SANITIZEOPT
+ /* Check if a given label represents a valid DNS label
+  * Return pointer to the first character after the label upon success,
+  * NULL otherwise.
+@@ -192,7 +192,9 @@
+ 		name++;
+ 	}
+ }
+-
++#else
++# define good_hostname(name) 1
++#endif
+ /* Create "opt_name=opt_value" string */
+ static NOINLINE char *xmalloc_optname_optval(uint8_t *option, const struct dhcp_optflag *optflag, const char *opt_name)
+ {
+--- busybox-1.22.1/networking/udhcp/Config.src	2014-01-09 10:15:44.000000000 -0800
++++ busybox-1.22.1-udhcp/networking/udhcp/Config.src	2014-09-22 15:11:27.805228291 -0700
+@@ -84,6 +84,17 @@
+ 	  will DHCPDECLINE the offer if the address is in use,
+ 	  and restart the discover process.
+ 
++config FEATURE_UDHCPC_SANITIZEOPT
++	bool "Do not pass malformed host and domain names"
++	default y
++	depends on UDHCPC
++	help
++	  If selected, udhcpc will check some options (such as option 12 -
++	  hostname) and if they don't look like valid hostnames
++	  (for example, if they start with dash or contain spaces),
++	  they will be replaced with string "bad" when exporting
++	  to the environment.
++	  
+ config FEATURE_UDHCP_PORT
+ 	bool "Enable '-P port' option for udhcpd and udhcpc"
+ 	default n

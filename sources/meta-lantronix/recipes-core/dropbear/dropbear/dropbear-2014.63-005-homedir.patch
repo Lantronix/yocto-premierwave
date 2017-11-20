@@ -1,0 +1,52 @@
+diff -Naur dropbear-2014.63/cli-kex.c dropbear-2014.63-ltrx/cli-kex.c
+--- dropbear-2014.63/cli-kex.c	2016-01-13 23:27:42.649480201 -0800
++++ dropbear-2014.63-ltrx/cli-kex.c	2016-01-13 23:36:59.981494384 -0800
+@@ -229,7 +229,15 @@
+ 	char * filename = NULL;
+ 	char * homedir = NULL;
+ 	
+-	homedir = getenv("HOME");
++       if (cli_opts.homedirectory)
++       {
++               homedir = cli_opts.homedirectory;    
++       }       
++       else
++       {
++               homedir = getenv("HOME");
++       }
++
+ 
+ 	if (!homedir) {
+ 		struct passwd * pw = NULL;
+diff -Naur dropbear-2014.63/cli-runopts.c dropbear-2014.63-ltrx/cli-runopts.c
+--- dropbear-2014.63/cli-runopts.c	2016-01-13 23:27:42.653480201 -0800
++++ dropbear-2014.63-ltrx/cli-runopts.c	2016-01-13 23:40:21.297499820 -0800
+@@ -126,6 +126,7 @@
+ 	cli_opts.remotehost = NULL;
+ 	cli_opts.remoteport = NULL;
+ 	cli_opts.username = NULL;
++	cli_opts.homedirectory = NULL;
+ 	cli_opts.optPassword = NULL;
+ 	cli_opts.cmd = NULL;
+ 	cli_opts.no_cmd = 0;
+@@ -224,6 +225,9 @@
+ 					}
+ 					cli_opts.always_accept_key = 1;
+ 					break;
++                case 'd':
++                    next = &cli_opts.homedirectory;
++                    break;
+                  case 'q':
+                      cli_opts.prompt_to_accept_key = 0;
+                      break;
+diff -Naur dropbear-2014.63/runopts.h dropbear-2014.63-ltrx/runopts.h
+--- dropbear-2014.63/runopts.h	2016-01-13 23:27:42.657480201 -0800
++++ dropbear-2014.63-ltrx/runopts.h	2016-01-13 23:41:06.525501057 -0800
+@@ -125,6 +125,7 @@
+ 
+ 	char *own_user;
+ 	char *username;
++	char *homedirectory;
+ 	char *optPassword;
+ 
+ 	char *cmd;

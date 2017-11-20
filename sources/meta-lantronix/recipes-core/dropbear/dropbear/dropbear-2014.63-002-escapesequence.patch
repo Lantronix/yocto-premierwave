@@ -1,0 +1,378 @@
+diff -Naur dropbear-2014.63/cli-main.c dropbear-2014.63-ltrx/cli-main.c
+--- dropbear-2014.63/cli-main.c	2014-02-19 06:05:24.000000000 -0800
++++ dropbear-2014.63-ltrx/cli-main.c	2016-01-13 05:13:59.259799777 -0800
+@@ -84,7 +84,12 @@
+ 		dropbear_exit("%s", error);
+ 	}
+ 
+-	cli_session(sock_in, sock_out);
++     if(cli_opts.asciiEscape && *cli_opts.asciiEscape)
++     {
++         printf("Escape sequence is %s\r\n", cli_opts.asciiEscape);
++     }
++
++	cli_session(sock_in, sock_out, cli_opts.asciiEscape);
+ 
+ 	/* not reached */
+ 	return -1;
+diff -Naur dropbear-2014.63/cli-runopts.c dropbear-2014.63-ltrx/cli-runopts.c
+--- dropbear-2014.63/cli-runopts.c	2014-02-19 06:05:24.000000000 -0800
++++ dropbear-2014.63-ltrx/cli-runopts.c	2016-01-13 05:21:46.699811790 -0800
+@@ -158,6 +158,7 @@
+ 	opts.cipher_list = NULL;
+ 	opts.mac_list = NULL;
+ #endif
++	cli_opts.asciiEscape = "";
+ 	/* not yet
+ 	opts.ipv4 = 1;
+ 	opts.ipv6 = 1;
+@@ -309,6 +310,9 @@
+ 					debug_trace = 1;
+ 					break;
+ #endif
++                 case 'x':
++                     next = &cli_opts.asciiEscape;
++                     break;
+ 				case 'F':
+ 				case 'e':
+ #ifndef ENABLE_USER_ALGO_LIST
+diff -Naur dropbear-2014.63/cli-session.c dropbear-2014.63-ltrx/cli-session.c
+--- dropbear-2014.63/cli-session.c	2014-02-19 06:05:24.000000000 -0800
++++ dropbear-2014.63-ltrx/cli-session.c	2016-01-13 05:24:11.279815847 -0800
+@@ -85,9 +85,9 @@
+ 	NULL /* Null termination */
+ };
+ 
+-void cli_session(int sock_in, int sock_out) {
++void cli_session(int sock_in, int sock_out, const char *asciiEscape) {
+ 
+-	common_session_init(sock_in, sock_out);
++	common_session_init(sock_in, sock_out, asciiEscape);
+ 
+ 	chaninitialise(cli_chantypes);
+ 
+diff -Naur dropbear-2014.63/common-channel.c dropbear-2014.63-ltrx/common-channel.c
+--- dropbear-2014.63/common-channel.c	2014-02-19 06:05:24.000000000 -0800
++++ dropbear-2014.63-ltrx/common-channel.c	2016-01-13 06:26:00.587916439 -0800
+@@ -608,6 +608,41 @@
+ 
+ }
+ 
++static unsigned char *scrutinize(unsigned char c, int *isEscape)
++{
++    if(isEscape)
++    {
++        *isEscape = 0;
++    }
++    if(c == ses.clearEscape[ses.matchingEscapeCharacters])
++    {
++        ++ses.matchingEscapeCharacters;
++        if(ses.matchingEscapeCharacters == ses.escapeSequenceLength)
++        {
++            if(isEscape)
++            {
++                *isEscape = 1;
++            }
++            ses.matchingEscapeCharacters = 0;
++        }
++        return NULL;
++    }
++    if(ses.matchingEscapeCharacters > 0)
++    {
++        memcpy(ses.currentCharacters, ses.clearEscape, ses.matchingEscapeCharacters);
++        ses.currentCharacters[ses.matchingEscapeCharacters] = c;
++        ses.currentCharacters[ses.matchingEscapeCharacters + 1] = 0;
++        ses.matchingEscapeCharacters = 0;
++    }
++    else
++    {
++        ses.currentCharacters[0] = c;
++        ses.currentCharacters[1] = 0;
++    }
++    return ses.currentCharacters;
++}
++
++
+ /* Reads data from the server's program/shell/etc, and puts it in a
+  * channel_data packet to send.
+  * chan is the remote channel, isextended is 0 if it is normal data, 1
+@@ -618,6 +653,7 @@
+ 	int len;
+ 	size_t maxlen, size_pos;
+ 	int fd;
++	int user_escape_sequence_detected = 0;
+ 
+ 	CHECKCLEARTOWRITE();
+ 
+@@ -635,8 +671,10 @@
+ 	maxlen = MIN(channel->transwindow, channel->transmaxpacket);
+ 	/* -(1+4+4) is SSH_MSG_CHANNEL_DATA, channel number, string length, and 
+ 	 * exttype if is extended */
+-	maxlen = MIN(maxlen, 
+-			ses.writepayload->size - 1 - 4 - 4 - (isextended ? 4 : 0));
++	maxlen = MIN(
++	  maxlen, 
++	  	ses.writepayload->size - 1 - 4 - 4 - (isextended ? 4 : 0) - ses.escapeSequenceLength
++	);
+ 	TRACE(("maxlen %zd", maxlen))
+ 	if (maxlen == 0) {
+ 		TRACE(("leave send_msg_channel_data: no window"))
+@@ -654,8 +692,10 @@
+ 	buf_putint(ses.writepayload, 0);
+ 
+ 	/* read the data */
+-	len = read(fd, buf_getwriteptr(ses.writepayload, maxlen), maxlen);
+-
++	{
++        unsigned char *b = buf_getwriteptr(ses.writepayload, maxlen);
++	len = read(fd, b, maxlen);
++	
+ 	if (len <= 0) {
+ 		if (len == 0 || errno != EINTR) {
+ 			/* This will also get hit in the case of EAGAIN. The only
+@@ -663,22 +703,44 @@
+ 			in which case it can be treated the same as EOF */
+ 			close_chan_fd(channel, fd, SHUT_RD);
+ 		}
+-		buf_setpos(ses.writepayload, 0);
+-		buf_setlen(ses.writepayload, 0);
+-		TRACE(("leave send_msg_channel_data: len %d read err %d or EOF for fd %d", 
+-					len, errno, fd))
+-		return;
+ 	}
+-
+-	if (channel->read_mangler) {
++        else if(ses.escapeSequenceLength > 0 && ! channel->flushing)
++        {
++            int i;
++            int read_len = len;
++            len = 0;
++            for(i = 0; i < read_len; ++i)
++            {
++                unsigned char *d = scrutinize(b[i], &user_escape_sequence_detected);
++                if(user_escape_sequence_detected)
++                {
++                    break;
++                }
++                if(d && *d)
++                {
++                    int n = strlen(d);
++                    if(len + n > i + 1)
++                    {
++                        int delta = len + n - i - 1;
++                        memmove(b + len + delta, b + len, read_len - i - 1);
++                        read_len += delta;
++                    }
++                    memcpy(b + len, d, n);
++                    len += n;
++                }
++            }
++        }
++	else if (channel->read_mangler) {
+ 		channel->read_mangler(channel, buf_getwriteptr(ses.writepayload, len), &len);
+-		if (len == 0) {
+-			buf_setpos(ses.writepayload, 0);
+-			buf_setlen(ses.writepayload, 0);
+-			return;
+-		}
+ 	}
+-
++	}
++    if(len <= 0)
++    {
++	   buf_setpos(ses.writepayload, 0);
++           buf_setlen(ses.writepayload, 0);
++    }
++    else
++    {
+ 	TRACE(("send_msg_channel_data: len %d fd %d", len, fd))
+ 	buf_incrwritepos(ses.writepayload, len);
+ 	/* ... real size here */
+@@ -696,6 +758,11 @@
+ 		TRACE(("closing from channel, flushing out."))
+ 		close_chan_fd(channel, fd, SHUT_RD);
+ 	}
++    }
++    if(user_escape_sequence_detected)
++    {
++        send_msg_channel_close(channel);
++    }
+ 	TRACE(("leave send_msg_channel_data"))
+ }
+ 
+diff -Naur dropbear-2014.63/common-session.c dropbear-2014.63-ltrx/common-session.c
+--- dropbear-2014.63/common-session.c	2014-02-19 06:05:24.000000000 -0800
++++ dropbear-2014.63-ltrx/common-session.c	2016-01-13 06:04:19.231877122 -0800
+@@ -49,8 +49,65 @@
+ /* this is set when we get SIGINT or SIGTERM, the handler is in main.c */
+ int exitflag = 0; /* GLOBAL */
+ 
++static int convertTextToControl(
++    const char *input,
++    char *output,
++    unsigned int maxLength
++)
++{
++    const char *pGuaranteedInput = (
++        input && *input ?
++        input : ""
++    );
++    const char *p = pGuaranteedInput;
++    unsigned int n;
++    for(n = 0; *p || n == 0; ++n)
++    {
++        static const char s_ctrl[] = "<control>";
++        char value = 0;
++        if(
++            strncmp(p, s_ctrl, sizeof(s_ctrl) - 1) == 0 &&
++            p[sizeof(s_ctrl) - 1]
++        )
++        {
++            char c = p[sizeof(s_ctrl) - 1];
++            p += sizeof(s_ctrl);
++            value = c & 0x1f;
++            if(
++                ! value ||
++                (
++                    (c & 0xe0) != 0x40 &&
++                    ! (c >= 'a' && c <= 'z')
++                )
++            )
++            {
++                printf("ERROR: Expected A through Z or [\\]^_ after <control>.\r\n");
++                return 0;
++            }
++        }
++        else
++        {
++            value = *p++;
++        }
++        if(n < maxLength)
++        {
++            output[n] = value;
++        }
++    }
++    output[maxLength < n ? maxLength : n] = 0;
++    if(n > maxLength)
++    {
++        printf(
++            "ERROR: String length %u exceeded maximum of %u characters.\r\n",
++            n, maxLength
++        );
++        return 0;
++    }
++    return 1;
++}
++
+ /* called only at the start of a session, set up initial state */
+-void common_session_init(int sock_in, int sock_out) {
++void common_session_init(int sock_in, int sock_out, const char *asciiEscape) {
+ 
+ 	TRACE(("enter session_init"))
+ 
+@@ -58,6 +115,14 @@
+ 	ses.sock_out = sock_out;
+ 	ses.maxfd = MAX(sock_in, sock_out);
+ 
++    convertTextToControl(
++        asciiEscape,
++        ses.clearEscape, sizeof(ses.clearEscape) - 1
++    );
++    ses.escapeSequenceLength = strlen(ses.clearEscape);
++    ses.matchingEscapeCharacters = 0;
++    memset(ses.currentCharacters, 0, sizeof(ses.currentCharacters));
++
+ 	ses.connect_time = 0;
+ 	ses.last_trx_packet_time = 0;
+ 	ses.last_packet_time = 0;
+@@ -336,9 +401,10 @@
+ 
+ 		FD_SET(fd, &fds);
+ 
+-		timeout.tv_sec = 1;
++		timeout.tv_sec = 30;
+ 		timeout.tv_usec = 0;
+-		if (select(fd+1, &fds, NULL, NULL, &timeout) < 0) {
++		int retval=select(fd+1, &fds, NULL, NULL, &timeout);
++		if (retval < 0) {
+ 			if (errno == EINTR) {
+ 				continue;
+ 			}
+@@ -347,6 +413,14 @@
+ 		}
+ 
+ 		checktimeouts();
++              if(retval==0)
++              {
++                      /*
++                       * 14451:Escape sequence (Control L) does not work when there is a protocol mismatch
++                       * no response from the other side - do not wait anymore
++                       * */
++                      return -1;
++              }
+ 		
+ 		/* Have to go one byte at a time, since we don't want to read past
+ 		 * the end, and have to somehow shove bytes back into the normal
+diff -Naur dropbear-2014.63/runopts.h dropbear-2014.63-ltrx/runopts.h
+--- dropbear-2014.63/runopts.h	2016-01-13 03:52:54.587675186 -0800
++++ dropbear-2014.63-ltrx/runopts.h	2016-01-13 06:05:47.535875162 -0800
+@@ -157,6 +157,9 @@
+ #ifdef ENABLE_CLI_PROXYCMD
+ 	char *proxycmd;
+ #endif
++
++    const char *asciiEscape;
++
+ } cli_runopts;
+ 
+ extern cli_runopts cli_opts;
+diff -Naur dropbear-2014.63/session.h dropbear-2014.63-ltrx/session.h
+--- dropbear-2014.63/session.h	2014-02-19 06:05:24.000000000 -0800
++++ dropbear-2014.63-ltrx/session.h	2016-01-13 06:19:43.931899964 -0800
+@@ -39,10 +39,12 @@
+ #include "chansession.h"
+ #include "dbutil.h"
+ 
++#define MAX_ESCAPE_SEQUENCE_LENGTH 8
++
+ extern int sessinitdone; /* Is set to 0 somewhere */
+ extern int exitflag;
+ 
+-void common_session_init(int sock_in, int sock_out);
++void common_session_init(int sock_in, int sock_out, const char *asciiEscape);
+ void session_loop(void(*loophandler)());
+ void session_cleanup();
+ void send_session_identification();
+@@ -57,7 +59,7 @@
+ void svr_dropbear_log(int priority, const char* format, va_list param);
+ 
+ /* Client */
+-void cli_session(int sock_in, int sock_out);
++void cli_session(int sock_in, int sock_out, const char *asciiEscape);
+ void cleantext(unsigned char* dirtytext);
+ 
+ /* crypto parameters that are stored individually for transmit and receive */
+@@ -196,6 +198,11 @@
+ 	 * really belong here, but nowhere else fits nicely */
+ 	int allowprivport;
+ 
++    char clearEscape[MAX_ESCAPE_SEQUENCE_LENGTH + 1];
++    unsigned int escapeSequenceLength;
++    unsigned int matchingEscapeCharacters;
++    unsigned char currentCharacters[MAX_ESCAPE_SEQUENCE_LENGTH + 1];
++
+ };
+ 
+ struct serversession {
+diff -Naur dropbear-2014.63/svr-session.c dropbear-2014.63-ltrx/svr-session.c
+--- dropbear-2014.63/svr-session.c	2014-02-19 06:05:24.000000000 -0800
++++ dropbear-2014.63-ltrx/svr-session.c	2016-01-13 06:20:21.723902238 -0800
+@@ -84,7 +84,7 @@
+ 	char *host, *port;
+ 	size_t len;
+ 
+-	common_session_init(sock, sock);
++	common_session_init(sock, sock, "");
+ 
+ 	/* Initialise server specific parts of the session */
+ 	svr_ses.childpipe = childpipe;

@@ -1,0 +1,16 @@
+--- miniupnpd-1.9.20141209_orig/miniupnpd.c	2015-05-21 15:21:14.343075383 -0700
++++ miniupnpd-1.9.20141209_mod/miniupnpd.c	2015-05-21 15:22:45.611070280 -0700
+@@ -1385,10 +1385,11 @@
+ 
+ 	openlog("miniupnpd", openlog_option, LOG_MINIUPNPD);
+ 
+-	if(!debug_flag)
++	//if(!debug_flag)
+ 	{
+ 		/* speed things up and ignore LOG_INFO and LOG_DEBUG */
+-		setlogmask(LOG_UPTO(LOG_NOTICE));
++		/* LTRX: speed things up even more. reason: there are errors in ipv6 only environment */
++		setlogmask(LOG_UPTO(LOG_EMERG));
+ 	}
+ 
+ 	if(checkforrunning(pidfilename) < 0)

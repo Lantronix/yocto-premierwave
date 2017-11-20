@@ -1,0 +1,13 @@
+asyncmap 0
+local
+noauth
+nodefaultroute
+hide-password
+noipx
+noipdefault
+0.0.0.0:0.0.0.0
+ipcp-accept-local
+ipcp-accept-remote
+updetach
+usepeerdns
+maxfail 3

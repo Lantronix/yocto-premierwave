@@ -1,0 +1,77 @@
+This README file contains information on building the meta-lantronix
+BSP layer
+
+
+Dependencies
+============
+
+This layer depends on:
+
+  URI: git://git.yoctoproject.org/poky
+  layers: meta, meta-yocto, meta-yocto-bsp
+  branch: jethro
+
+  URI: git://git.openembedded.org/meta-openembedded
+  layers: meta-oe, meta-filesystems, meta-networking, meta-python, meta-wevserver
+  branch: jethro
+
+
+Patches
+=======
+
+Please submit any patches against this BSP to the maintainer:
+
+Maintainer: Adam Lussier <adam.lussier@timesys.com>
+
+
+Table of Contents
+=================
+
+  I. Building the meta-lantronix BSP layer from tar archive
+ II. TBD: Cloning the layers from source Git repos
+
+
+I. Building the meta-lantronix BSP layer
+========================================
+
+This BSP is distributed as tar file containing the full Yocto build tree.
+Here is the directory structure:
+
+  yocto/
+    build/
+      conf/
+        bblayers.conf
+        local.conf
+    sources/
+      meta-lantronix/
+      meta-openembedded/
+      poky/
+
+Note that the meta-lantronix layer, as well as the layers contained in
+meta-openembedded and poky, are listed in yocto/build/conf/bblayers.conf.
+Also, the MACHINE is set to "pw2050" in yocto/build/conf/local.conf.
+
+First, make sure you have the Yocto host requirements installed.  The command
+to install the dependencies is listed for all supported host distributions here:
+http://www.yoctoproject.org/docs/2.0/yocto-project-qs/yocto-project-qs.html#packages
+
+To build the BSP, first cd to the yocto/ directory, then run:
+
+$ source sources/poky/oe-init-build-env build
+
+This will set up the environment and move you to the build directory.  Now, run:
+
+$ bitbake ltrx-image
+
+When the build completes, the final image will be located at:
+yocto/build/tmp/deploy/images/pw2050/premierwave_gg2050_ltrx-image_1.0.0.0T21.rom
+
+This image can be flashed using Lantronix DeviceInstaller on Windows.
+
+1) Copy premierwave_gg2050_ltrx-image_1.0.0.0T21.rom to a Windows host.
+2) Install and run Lantronix DeviceInstaller
+3) Connect the PW2050 to the host using the J9 Mini USB port.
+4) Choose "Tools -> Recover Firmware" or press F8.
+5) Select the .rom file as the firmware image.  Do not select a recovery loader firmware.
+6) Follow the prompts.  When flashing is complete, you will be able to access
+   the console on the J10 Mini USB port.

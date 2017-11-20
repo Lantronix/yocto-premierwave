@@ -1,0 +1,84 @@
+--- cjson-58/cJSON.c	2015-07-08 10:46:12.585992025 -0700
++++ cjson-58-lax/cJSON.c	2015-07-08 10:43:55.893999674 -0700
+@@ -1,6 +1,8 @@
+ /*
+   Copyright (c) 2009 Dave Gamble
+ 
++  with enhancements by Mike Kasprzak (2015)
++
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+@@ -258,7 +260,43 @@
+ static char *print_object(cJSON *item,int depth,int fmt);
+ 
+ /* Utility to jump whitespace and cr/lf */
+-static const char *skip(const char *in) {while (in && *in && (unsigned char)*in<=32) in++; return in;}
++static const char *skip(const char *in) {
++	if ( !in ) return 0;
++
++	while (*in) {
++		/* Block Comment Found! */
++		if ( (in[0]=='/') && (in[1]=='*') ) {
++			in+=2;
++			while ( *in ) {
++				/* Exit comment on 'star slash': */
++				if ( (in[0]=='*') && (in[1]=='/') ) break;
++				in++;
++			}
++			
++			/* Bail if we hit null */
++			if ( *in == 0 ) return 0;
++
++			in++;
++		}
++		/* Line Comment Found! */
++		else if ( (in[0]=='/') && (in[1]=='/') ) {
++			in+=2;
++			while ( *in ) {
++				/* Exit comment on Carriage Return or Newline */
++				if ( (in[0]==13) || (in[0]==10) ) break;
++				in++;
++			}
++			
++			/* Bail if we hit null */
++			if ( *in == 0 ) return 0;
++		}
++		/* Non-whitespace/control character found. Bail out... */
++		else if ( (unsigned char)*in > 32 ) break;
++		
++		in++;
++	}
++	return in;
++}
+ 
+ /* Parse an object - create a new root, and populate. */
+ cJSON *cJSON_ParseWithOpts(const char *value,const char **return_parse_end,int require_null_terminated)
+@@ -334,9 +372,12 @@
+ 	while (*value==',')
+ 	{
+ 		cJSON *new_item;
++		value = skip(value+1);	/* MK - skip the comma */
++		if (!value) return 0;	/* MK - memory fail */
++		if (*value==']') break;	/* MK - bail if next character is a closing brace */
+ 		if (!(new_item=cJSON_New_Item())) return 0; 	/* memory fail */
+ 		child->next=new_item;new_item->prev=child;child=new_item;
+-		value=skip(parse_value(child,skip(value+1)));
++		value=skip(parse_value(child,value)); 	/* MK - moved the comma skip above */
+ 		if (!value) return 0;	/* memory fail */
+ 	}
+ 
+@@ -424,9 +465,12 @@
+ 	while (*value==',')
+ 	{
+ 		cJSON *new_item;
++		value = skip(value+1);	/* MK - skip the comma */
++		if (!value) return 0;	/* MK - memory fail */
++		if (*value=='}') break;	/* MK - bail if next character is a closing brace */
+ 		if (!(new_item=cJSON_New_Item()))	return 0; /* memory fail */
+ 		child->next=new_item;new_item->prev=child;child=new_item;
+-		value=skip(parse_string(child,skip(value+1)));
++		value=skip(parse_string(child,value));	/* MK - moved the comma skip above */
+ 		if (!value) return 0;
+ 		child->string=child->valuestring;child->valuestring=0;
+ 		if (*value!=':') {ep=value;return 0;}	/* fail! */

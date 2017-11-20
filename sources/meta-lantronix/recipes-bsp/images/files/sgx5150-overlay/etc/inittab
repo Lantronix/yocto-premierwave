@@ -1,0 +1,94 @@
+# /etc/inittab
+#
+# Copyright (C) 2001 Erik Andersen <andersen@codepoet.org>
+#
+# Note: BusyBox init doesn't support runlevels.  The runlevels field is
+# completely ignored by BusyBox init. If you want runlevels, use
+# sysvinit.
+#
+# Format for each entry: <id>:<runlevels>:<action>:<process>
+#
+# id        == tty to run on, or empty for /dev/console
+# runlevels == ignored
+# action    == one of sysinit, respawn, askfirst, wait, and once
+# process   == program to run
+
+# Startup the system
+null::sysinit:/bin/mount -t proc proc /proc
+null::sysinit:/bin/mount -o remount,sync,rw /
+null::sysinit:/bin/mkdir -p /dev/pts
+null::sysinit:/bin/mount -a
+null::sysinit:/bin/mount -o remount,size=64M /tmp
+null::sysinit:/bin/echo > /dev/mdev.seq
+null::sysinit:/sbin/sysctl -w kernel.hotplug=/sbin/mdev
+null::sysinit:/sbin/mdev -s
+
+# USB Type-C
+null::sysinit:/bin/echo 249 >/sys/class/gpio/export
+null::sysinit:/bin/echo out >/sys/class/gpio/gpio249/direction
+null::sysinit:/bin/echo 1 >/sys/class/gpio/gpio249/active_low
+null::sysinit:/bin/echo 254 >/sys/class/gpio/export
+null::sysinit:/bin/echo out >/sys/class/gpio/gpio254/direction
+null::sysinit:/bin/echo 1 >/sys/class/gpio/gpio254/value
+null::sysinit:/bin/echo 0 >/sys/class/gpio/gpio249/value
+
+# bring up radio subsystem power early
+null::sysinit:/sbin/ltrx-radio-up &
+
+null::sysinit:/sbin/ltrx_remount_etc
+
+null::sysinit:/bin/mkdir -m777 /tmp/tftp &
+null::sysinit:/bin/mkdir -m755 /tmp/avahi-autoipd &
+null::sysinit:/bin/mkdir -p /ltrx_private/cfg &
+# delete cfgldr_inputs in case it exists, which includes credential info
+null::sysinit:/bin/ltrx_clean_cfgldr_inputs
+null::sysinit:/bin/mkdir -p /ltrx_user/pwxcr
+null::sysinit:/bin/chown admin:admin /ltrx_user
+null::sysinit:/bin/chmod -R o-w,o+r,g+rw /ltrx_user &
+null::sysinit:/bin/mkdir -p /etc/features &
+null::sysinit:/bin/mkdir -p /etc/ssl/clientcerts &
+null::sysinit:/bin/mkdir -p /var/db
+null::sysinit:/bin/mkdir -p /var/lib/ebtables/
+null::sysinit:/bin/rm -rf /var/lib/ebtables/*
+null::sysinit:/bin/pw_fuse_fs /ltrx_user/pwxcr -o allow_other &
+null::sysinit:/bin/devmon &
+null::sysinit:/etc/init.d/S20urandom start &
+null::sysinit:/bin/hostname -F /etc/hostname &
+
+# comply with IPv6 Ready Logo V6LC.3.1.2 and V6LC.3.1.4
+null::sysinit:/sbin/sysctl -w net.ipv6.conf.all.accept_dad=2 > /dev/null &
+null::sysinit:/sbin/sysctl -w net.ipv6.conf.eth0.accept_dad=2 > /dev/null &
+null::sysinit:/sbin/sysctl -w net.ipv6.conf.eth1.accept_dad=2 > /dev/null &
+null::sysinit:/sbin/sysctl -w net.ipv6.conf.default.accept_dad=2 > /dev/null &
+# enable IPv6 autoconf addressing
+null::sysinit:/bin/echo 1 >/proc/sys/net/ipv6/conf/default/autoconf &
+null::sysinit:/sbin/ifconfig lo 127.0.0.1 up
+null::sysinit:/sbin/route add -net 127.0.0.0 netmask 255.0.0.0 lo &
+
+# Limit number of pty sessions to 20
+null::sysinit:/bin/echo 20 > /proc/sys/kernel/pty/max &
+
+# Set up TCP keepalive
+null::sysinit:/bin/echo 45 > /proc/sys/net/ipv4/tcp_keepalive_intvl &
+null::sysinit:/bin/echo  8 > /proc/sys/net/ipv4/tcp_keepalive_probes &
+null::sysinit:/bin/echo 45 > /proc/sys/net/ipv4/tcp_keepalive_time &
+null::sysinit:/bin/echo 0 > /proc/sys/net/ipv4/tcp_timestamps &
+#disable swappiness
+null::sysinit:/bin/echo 0 > /proc/sys/vm/swappiness
+#kernel panic on out of memory
+null::sysinit:/bin/echo 1 > /proc/sys/vm/panic_on_oom
+#reboot on panic after 10s
+null::sysinit:/bin/echo 10 > /proc/sys/kernel/panic
+# Start Lantronix processes
+null::sysinit:/bin/ltrx_cmdproxy &
+null::sysinit:/bin/ltrx_cfg > /dev/null 2>&1 &
+null::sysinit:/bin/ltrx_as > /dev/null 2>&1 &
+null::sysinit:/bin/netman &
+
+# Put a getty on the serial port
+#ttyS0::respawn:-/bin/sh
+
+# Stuff to do before rebooting
+null::shutdown:/sbin/hwclock --utc --systohc
+null::shutdown:/bin/umount -a -r
+null::shutdown:/sbin/swapoff -a

@@ -1,0 +1,20 @@
+NOTIFICATION-TEST-MIB DEFINITIONS ::= BEGIN
+    IMPORTS ucdavis FROM UCD-SNMP-MIB
+            enterprises, OBJECT-TYPE FROM SNMPv2-SMI
+            DisplayString FROM SNMPv2-TC;
+demonotifs OBJECT IDENTIFIER ::= { ucdavis 991 }
+demomessages OBJECT IDENTIFIER ::= { enterprises  29881 }
+demo-notif NOTIFICATION-TYPE
+    STATUS current
+    OBJECTS { sysLocation }
+    DESCRIPTION "Just a test notification"
+    ::= { demonotifs 17 }
+
+demo-message OBJECT-TYPE
+    SYNTAX        DisplayString (SIZE (0..255))
+    MAX-ACCESS    read-write
+    STATUS        current
+    DESCRIPTION   "The message for send"
+    ::= {demomessages 1}
+    
+END

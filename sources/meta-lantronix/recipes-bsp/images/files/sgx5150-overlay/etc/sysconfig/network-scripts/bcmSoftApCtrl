@@ -1,0 +1,190 @@
+#!/bin/sh
+#
+# bcmdhd soft AP control script
+# Uses the Broadcom 'wl' utility to set up the soft AP
+# interface.
+# NOTE:
+#   For the present we'll only allow three combinations:
+#   open, WPA/TKIP and WPA2/CCMP.
+#   Others may be possible, but to ensure compliance with
+#   current WFA guidelines we'll stick with these.
+#
+# $1 = start/stop
+#
+#
+
+SOFT_AP_CFG_FILE="/tmp/softapcfg"
+DHCP_SERVER_CONFIG_FILE=/etc/dnsmasq.conf
+DHCP_SERVER_PID_FILE=/var/run/wl0.1.dnsmasq.pid
+
+WLAN_IFCFILE=/etc/sysconfig/network-scripts/ifcfg-wlan0
+
+# For the time being we're using dnsmasq...
+update_dhcp_server_config() {
+    echo "interface=$1" >> "$DHCP_SERVER_CONFIG_FILE"
+    echo "except-interface=lo" >> "$DHCP_SERVER_CONFIG_FILE"
+    echo "bind-interfaces" >> "$DHCP_SERVER_CONFIG_FILE"
+    echo "dhcp-range=$2,$3,12h" >> "$DHCP_SERVER_CONFIG_FILE"
+    #router
+    echo "dhcp-option=option:router,$4" >> "$DHCP_SERVER_CONFIG_FILE"
+    #dns-server
+    echo "server=$4" >> "$DHCP_SERVER_CONFIG_FILE"
+    echo "dhcp-option=option:dns-server,$4" >> "$DHCP_SERVER_CONFIG_FILE"
+    sync
+    return 0
+}
+
+if [ "$1" == "start" ]; then
+
+    if [ ! -e "$SOFT_AP_CFG_FILE" ]; then
+        logger -p "user.err" "missing softap configuration"
+        exit 1
+    fi
+
+    if [ ! -f $WLAN_IFCFILE ]; then
+        logger -p "user.err" "missing wlan0 configuration"
+        exit 2
+    fi
+
+    . $SOFT_AP_CFG_FILE
+    logger -p "user.debug" "starting softap $SSID , $SEC_SUITE , $ENCRYPTION"
+
+    if [ "$SEC_SUITE" == "open" ]; then
+        secSuite=0
+    elif [ "$SEC_SUITE" == "wpa" ]; then
+        secSuite=4
+    elif [ "$SEC_SUITE" == "wpa2" ]; then
+        secSuite=128
+    else
+        logger -p "user.err" "Invalid security. must be open, wpa, or wpa2."
+        exit 1
+    fi
+
+    #DO NOT REMOVE THIS SECTION
+    wl up
+    rc=$?
+    if [ $rc != 0 ]; then
+        logger -p "user.err" "wl up failed with ${rc}"
+        exit 1
+    fi
+    usleep 5000
+    ifconfig wlan0 up
+    rc=$?
+    if [ $rc != 0 ]; then
+        logger -p "user.err" "wlan0 up failed with ${rc}"
+        exit 1
+    fi
+
+    #wait for driver up state
+    while true; do
+        state=`wl isup | tr -d '\n'`
+        if [ $state != 1 ]; then
+            logger -p "user.warn" "waiting for wl up ${state}"
+            usleep 50000
+            wl up
+            state=`wl isup | tr -d '\n'`
+            logger -p "user.warn" "explicit wl up ${state}"
+            break
+        else
+            logger -p "user.debug" "wl isup"
+            break
+        fi
+    done
+
+    usleep 5000
+    wl mchan 0
+    rc=$?
+    if [ $rc != 0 ]; then
+        logger -p "user.err" "mchan failed with ${rc}"
+        exit 1
+    fi
+
+    wl ap_bss create
+    rc=$?
+    if [ $rc != 0 ]; then
+        logger -p "user.err" "ap_bss create failed with ${rc}"
+        exit 1
+    fi
+
+    wl -i wl0.1 wsec "$ENCRYPTION"
+    rc=$?
+    if [ $rc != 0 ]; then
+        logger -p "user.err" "wsec failed with ${rc}"
+        exit 1
+    fi
+
+    wl -i wl0.1 wpa_auth "$secSuite"
+    rc=$?
+    if [ $rc != 0 ]; then
+        logger -p "user.err" "wpa_auth failed with ${rc}"
+        exit 1
+    fi
+
+    if [ "$SEC_SUITE" != "open" ]; then
+        wl -i wl0.1 set_pmk "$PASSPHRASE"
+        rc=$?
+        if [ $rc != 0 ]; then
+            logger -p "user.err" "set_psk failed with ${rc}"
+            exit 1
+        fi
+    fi
+
+    wl -i wl0.1 ssid "$SSID"
+    rc=$?
+    if [ $rc != 0 ]; then
+        logger -p "user.err" "ssid $SSID failed with ${rc}"
+        exit 1
+    fi
+
+    wl -i wl0.1 bss up
+    rc=$?
+    if [ $rc != 0 ]; then
+        logger -p "user.err" "bss up failed with ${rc}"
+        exit 1
+    fi
+
+    # Now set up the interface and DHCP server:
+    /sbin/ifconfig wl0.1 $IP_ADDRESS netmask $NETMASK up
+    update_dhcp_server_config wl0.1 $DHCP_START $DHCP_END $IP_ADDRESS
+    IPV6_AAAA_RECORD=""
+    if [ "$DHCPV6" == "yes" ]; then
+        ip addr add $IPV6_ADDRESS dev wl0.1
+        echo "dhcp-range=$DHCP6_START,$DHCP6_END,12h" >> "$DHCP_SERVER_CONFIG_FILE"
+        echo "dhcp-option=option6:dns-server,[$IPV6_ADDRESS]" >> "$DHCP_SERVER_CONFIG_FILE"
+        echo "enable-ra" >> "$DHCP_SERVER_CONFIG_FILE"
+        echo "ra-param=wl0.1,60,120" >> "$DHCP_SERVER_CONFIG_FILE"
+        sync
+        IPV6_AAAA_RECORD=",$IPV6_ADDRESS"
+    else
+        logger -p "user.info" "IPv6 is disabled on access point."
+        echo 1 > /proc/sys/net/ipv6/conf/wl0.1/disable_ipv6
+        for addr in $(ip -6 addr show dev wl0.1 scope global | grep inet6 | awk '{print $2}'); do
+            ip -6 addr del $addr dev wl0.1 scope global
+        done
+        for addr in $(ip -6 addr show dev wl0.1 scope link | grep inet6 | awk '{print $2}'); do
+            ip -6 addr del $addr dev wl0.1 scope link
+        done
+    fi
+    /usr/sbin/dnsmasq --host-record=lantronix.local,$IP_ADDRESS$IPV6_AAAA_RECORD --host-record=$DNS_REDIRECT,$IP_ADDRESS$IPV6_AAAA_RECORD --pid-file=$DHCP_SERVER_PID_FILE
+
+elif [ "$1" == "stop" ]; then
+
+    # We could test for the existence of the soft AP interface in
+    # /sys/class/net/ But we'll just proceed with the following
+    # to ensure nothing gets orphaned...
+    logger -p "user.debug" "stopping softap"
+    wl -i wl0.1 bss down
+    usleep 5000
+    wl ap_bss destroy
+    if [ -e $DHCP_SERVER_PID_FILE ]; then
+        kill -TERM `cat $DHCP_SERVER_PID_FILE`
+    fi
+    /bin/rm -f "$DHCP_SERVER_PID_FILE"
+    /bin/rm -f "$DHCP_SERVER_CONFIG_FILE"
+
+else
+    logger -p "user.err" "softap: invalid command $1. must be start|stop"
+    exit 1
+fi
+
+exit 0

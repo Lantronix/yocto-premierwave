@@ -1,0 +1,14 @@
+diff --git a/http_upload_module/config b/http_upload_module/config
+new file mode 100644
+index 0000000..7abbe94
+--- /dev/null
++++ b/http_upload_module/config
+@@ -0,0 +1,5 @@
++USE_MD5=YES
++USE_SHA1=YES
++ngx_addon_name=ngx_http_upload_module
++HTTP_MODULES="$HTTP_MODULES ngx_http_upload_module"
++NGX_ADDON_SRCS="$NGX_ADDON_SRCS src/http/modules/ngx_http_upload_module.c"
+-- 
+1.9.1
+

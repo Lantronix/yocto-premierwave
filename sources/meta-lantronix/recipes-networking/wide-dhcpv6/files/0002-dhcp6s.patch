@@ -1,0 +1,15 @@
+*** wide-dhcpv6-20080615/dhcp6s.c	2008-06-15 00:51:57.000000000 -0700
+--- wide-dhcpv6-20080615-ltrx/dhcp6s.c	2013-08-27 07:13:44.806366084 -0700
+***************
+*** 50,56 ****
+--- 50,59 ----
+  #include <net/if_var.h>
+  #endif
+  
++ #define __USE_GNU
+  #include <netinet/in.h>
++ #undef __USE_GNU
++ 
+  #ifdef __KAME__
+  #include <netinet6/in6_var.h>
+  #endif

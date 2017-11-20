@@ -1,0 +1,13 @@
+--- wide-dhcpv6-20080615/cftoken.c	2015-12-29 11:39:54.365744938 -0800
++++ wide-dhcpv6-20080615-ltrx/cftoken.c	2015-12-29 11:44:14.993730355 -0800
+@@ -2576,8 +2576,10 @@
+ 				yyerrorcount);
+ 		} else
+ 			yyerror("fatal parse failure: exiting");
++		fclose(yyin);	
+ 		return (-1);
+ 	}
+ 
++	fclose(yyin);
+ 	return (cf_post_config());
+ }

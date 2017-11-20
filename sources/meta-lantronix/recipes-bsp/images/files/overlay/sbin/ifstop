@@ -1,0 +1,93 @@
+#!/bin/sh
+
+if [ "$#" -lt 1 ] ; then
+    echo "Invalid arguments."
+    exit 1
+fi
+
+IFCNAME=$1
+
+IFCBASE=/etc/sysconfig/network-scripts
+IFCFILE=$IFCBASE/ifcfg-$IFCNAME
+IFCNETWORKING=/etc/sysconfig/network_$IFCNAME
+
+LTRX_NET_COMMON="/etc/sysconfig/network-scripts/ltrx-network-common.script"
+ETH_IP_FILE="/tmp/ethipaddress"
+if [ ! -f $IFCFILE ]; then
+    echo "Interface configuration file for $IFCNAME does not exist."
+    logger "Interface configuration file for $IFCNAME does not exist."
+    exit 2
+fi
+
+. $IFCFILE
+
+if [ "$ONBOOT" != "yes" ] ; then
+    echo "Interface $IFCNAME is disabled."
+    logger "Interface $IFCNAME is disabled."
+    exit 0
+fi
+
+# Stop autoip processes
+AUTOIP_START_PID_FILE=/var/run/start_autoipd.$IFCNAME.pid
+if [ -f $AUTOIP_START_PID_FILE ] ; then
+    kill `cat $AUTOIP_START_PID_FILE` 2>/dev/null
+    rm -f $AUTOIP_START_PID_FILE
+fi
+AUTOIP_PID_FILE=/var/run/avahi-autoipd.$IFCNAME.pid
+if [ -f $AUTOIP_PID_FILE ] ; then
+    kill `cat $AUTOIP_PID_FILE` 2>/dev/null
+    rm -f $AUTOIP_PID_FILE
+fi
+
+if [ -f $IFCNETWORKING ]; then
+	#disable networking for interface
+	echo "NETWORKING=no" > $IFCNETWORKING.tmp
+	cat $IFCNETWORKING | grep -v -e"NETWORKING[[:space:]]*=" >> $IFCNETWORKING.tmp
+	mv $IFCNETWORKING.tmp $IFCNETWORKING
+fi
+
+if [ "$BOOTPROTO" = "dhcp" ] || [ "$BOOTPROTO" = "bootp" ] ; then
+    DHCP_PID_FILE=/var/run/udhcpc.$IFCNAME.pid
+    if [ -f $DHCP_PID_FILE ] ; then
+        kill `cat /var/run/udhcpc.$IFCNAME.pid` 2>/dev/null
+        rm -f $DHCP_PID_FILE
+    fi
+    rm -f /etc/sysconfig/dhcp_hostname_$IFCNAME
+    rm -f /etc/sysconfig/dhcp_domain_$IFCNAME
+    rm -f /etc/sysconfig/dhcp_dns_$IFCNAME
+    rm -f /etc/sysconfig/dhcp_router_$IFCNAME
+fi
+rm -f /tmp/autoip.$IFCNAME
+if [ -e /tmp/bridging.active -a $IFCNAME = "wlan0" ] ; then
+    if [ -e $ETH_IP_FILE ] ; then
+        . $ETH_IP_FILE
+        /sbin/ip addr del $ETH_IP/32 dev eth0
+        /bin/rm $ETH_IP_FILE
+    fi
+    # Disable DHCP interception (ipv4).
+    ebtables -t broute -D BROUTING -p ipv4 -i wlan0 --ip-protocol udp --ip-source-port 67:68 --ip-destination-port 67:68 -j DROP
+fi
+if [ "$BOOTPROTO6" = "dhcp" ] || [ "$BOOTPROTO6" = "bootp" ] ; then
+    DHCP6_PID_FILE=/var/run/dhcp6.$IFCNAME.pid
+    if [ -f $DHCP6_PID_FILE ] ; then
+        kill `cat /var/run/dhcp6.$IFCNAME.pid` 2>/dev/null
+        rm -f $DHCP6_PID_FILE
+    fi
+fi
+ifconfig $IFCNAME 0.0.0.0
+
+if [ -e /tmp/bridging.active -a $IFCNAME = "wlan0" ] ; then
+    # Disable DHCP interception (ipv6).
+    ebtables -t broute -D BROUTING -i wlan0 --proto ipv6 --ip6-protocol udp --ip6-source-port 546:547 --ip6-destination-port 546:547 -j DROP
+fi
+for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
+    ip -6 addr del $addr dev $IFCNAME scope global
+done
+if [ ! -f $LTRX_NET_COMMON ]; then
+    echo "Missing ltrx network common script."
+    logger "Missing ltrx network common script."
+    exit 1
+fi
+. $LTRX_NET_COMMON
+ltrx_start_network $IFCNAME
+exit 0

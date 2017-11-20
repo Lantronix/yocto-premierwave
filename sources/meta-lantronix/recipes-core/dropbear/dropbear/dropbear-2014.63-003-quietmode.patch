@@ -1,0 +1,47 @@
+diff -Naur dropbear-2014.63/cli-kex.c dropbear-2014.63-ltrx/cli-kex.c
+--- dropbear-2014.63/cli-kex.c	2014-02-19 06:05:24.000000000 -0800
++++ dropbear-2014.63-ltrx/cli-kex.c	2016-01-13 23:05:19.817447682 -0800
+@@ -197,6 +197,11 @@
+ 		m_free(fp);
+ 		return;
+ 	}
++       if(! cli_opts.prompt_to_accept_key)
++       {
++               m_free(fp);
++               dropbear_exit("Host key not found in Known Hosts");
++       }
+ 	fprintf(stderr, "\nHost '%s' is not in the trusted hosts file.\n(%s fingerprint %s)\nDo you want to continue connecting? (y/n) ", 
+ 			cli_opts.remotehost, 
+ 			algoname,
+diff -Naur dropbear-2014.63/cli-runopts.c dropbear-2014.63-ltrx/cli-runopts.c
+--- dropbear-2014.63/cli-runopts.c	2016-01-13 22:58:22.097435122 -0800
++++ dropbear-2014.63-ltrx/cli-runopts.c	2016-01-13 23:07:00.937448285 -0800
+@@ -131,6 +131,7 @@
+ 	cli_opts.backgrounded = 0;
+ 	cli_opts.wantpty = 9; /* 9 means "it hasn't been touched", gets set later */
+ 	cli_opts.always_accept_key = 0;
++	cli_opts.prompt_to_accept_key = 1;
+ 	cli_opts.no_hostkey_check = 0;
+ 	cli_opts.is_subsystem = 0;
+ #ifdef ENABLE_CLI_PUBKEY_AUTH
+@@ -222,6 +223,9 @@
+ 					}
+ 					cli_opts.always_accept_key = 1;
+ 					break;
++                 case 'q':
++                     cli_opts.prompt_to_accept_key = 0;
++                     break;
+ 				case 'p': /* remoteport */
+ 					next = &cli_opts.remoteport;
+ 					break;
+diff -Naur dropbear-2014.63/runopts.h dropbear-2014.63-ltrx/runopts.h
+--- dropbear-2014.63/runopts.h	2016-01-13 22:58:22.097435122 -0800
++++ dropbear-2014.63-ltrx/runopts.h	2016-01-13 23:08:10.445450019 -0800
+@@ -129,6 +129,7 @@
+ 	char *cmd;
+ 	int wantpty;
+ 	int always_accept_key;
++	int prompt_to_accept_key;
+ 	int no_hostkey_check;
+ 	int no_cmd;
+ 	int backgrounded;

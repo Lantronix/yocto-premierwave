@@ -1,0 +1,26 @@
+#!/bin/sh
+
+logmsg() {
+    logger $1
+    echo $1
+}
+
+MOUNT_POINT=$1
+MOUNT_POINT_REGEX=$(echo "$1" | sed 's/[\/\-\~\[\*\?\^\$\.\(\)\+\{\}]/\\&/g')
+DEV_NAME=`mount | awk '$0 ~ /'"$MOUNT_POINT_REGEX"'/ { print $1 }'`
+
+sync
+umount "$MOUNT_POINT" 
+RC=$?
+
+# It would be nice to flush the drive buffers and put the device to sleep,
+# but that requires udevadm (to navigate from block device to usb bus device)
+# and sdparm
+if [ $RC -eq 0 ] ; then
+    logmsg "unmounted $DEV_NAME from $MOUNT_POINT"
+    rmdir "$MOUNT_POINT"
+else
+    logmsg "failed to unmount $MOUNT_POINT"
+fi
+
+return $RC

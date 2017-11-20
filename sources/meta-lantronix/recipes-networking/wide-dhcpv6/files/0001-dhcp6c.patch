@@ -1,0 +1,16 @@
+diff -crB wide-dhcpv6-20080615/dhcp6c.c wide-dhcpv6-20080615-ltrx/dhcp6c.c
+*** wide-dhcpv6-20080615/dhcp6c.c	2013-07-17 00:03:15.883001369 -0700
+--- wide-dhcpv6-20080615-ltrx/dhcp6c.c	2013-07-17 00:04:27.759003128 -0700
+***************
+*** 49,55 ****
+--- 49,57 ----
+  #include <net/if_var.h>
+  #endif
+  
++ #define __USE_GNU
+  #include <netinet/in.h>
++ #undef __USE_GNU
+  #ifdef __KAME__
+  #include <net/if_dl.h>
+  #include <netinet6/in6_var.h>
+

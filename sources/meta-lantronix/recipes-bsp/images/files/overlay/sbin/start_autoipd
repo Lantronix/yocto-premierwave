@@ -1,0 +1,31 @@
+#!/bin/sh
+# start_autoipd
+# Delays and then starts the avahi autoip daemon
+
+if [ "$#" -lt 2 ] ; then
+    echo "Invalid arguments."
+    exit 1
+fi
+
+IFCNAME=$1
+DELAY_SECS=$2
+PID_FILE=/var/run/start_autoipd.$IFCNAME.pid
+if [ -f $PID_FILE ] ; then
+    logger "stopping prior instance of avahi:$IFCNAME"
+    kill `cat /var/run/start_autoipd.$IFCNAME.pid` 2>/dev/null
+    rm -f $PID_FILE
+fi
+# Write current pid to pid file
+echo $$ > $PID_FILE
+
+# Give some time for udhcpc to obtain an address.
+if [ $DELAY_SECS -gt 0 ] ; then
+    sleep $DELAY_SECS
+fi
+
+# Start the avahi autoip daemon
+avahi-autoipd -s -D -t /etc/avahi/ltrx_avahi-autoipd.action $IFCNAME
+
+rm -f $PID_FILE
+
+exit 0

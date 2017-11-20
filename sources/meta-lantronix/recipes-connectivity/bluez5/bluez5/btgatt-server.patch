@@ -1,0 +1,2444 @@
+diff -ruN bluez_utils-5.43/Makefile.in bluez_utils-5.43_mod/Makefile.in
+--- bluez_utils-5.43/Makefile.in	2017-06-14 18:25:33.843679806 +0530
++++ bluez_utils-5.43_mod/Makefile.in	2017-09-18 11:19:43.426696870 +0530
+@@ -83,8 +83,7 @@
+ POST_UNINSTALL = :
+ build_triplet = @build@
+ host_triplet = @host@
+-bin_PROGRAMS = $(am__EXEEXT_1) $(am__EXEEXT_2) $(am__EXEEXT_3) \
+-	$(am__EXEEXT_4)
++bin_PROGRAMS = tools/btgatt-server$(EXTEXT) tools/hciattach$(EXEEXT) tools/hciconfig$(EXEEXT) tools/hcitool$(EXEEXT) tools/bdaddr$(EXTEXT)
+ noinst_PROGRAMS = $(am__EXEEXT_5) $(am__EXEEXT_6) $(am__EXEEXT_7) \
+ 	$(am__EXEEXT_8) $(am__EXEEXT_11)
+ libexec_PROGRAMS = src/bluetoothd$(EXEEXT) obexd/src/obexd$(EXEEXT)
+@@ -397,7 +396,8 @@
+ 	src/shared/mainloop.lo
+ src_libshared_mainloop_la_OBJECTS =  \
+ 	$(am_src_libshared_mainloop_la_OBJECTS)
+-@CLIENT_TRUE@am__EXEEXT_1 = client/bluetoothctl$(EXEEXT)
++@CLIENT_TRUE@am__EXEEXT_1 = client/bluetoothctl$(EXEEXT) \
++@EXPERIMENTAL_TRUE@    tools/btgatt-server$(EXTEXT)
+ @MONITOR_TRUE@am__EXEEXT_2 = monitor/btmon$(EXEEXT)
+ @TOOLS_TRUE@am__EXEEXT_3 = tools/hciattach$(EXEEXT) \
+ @TOOLS_TRUE@	tools/hciconfig$(EXEEXT) tools/hcitool$(EXEEXT) \
+diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btgatt-server.c
+--- bluez_utils-5.43/tools/btgatt-server.c	2017-07-11 18:21:39.057104099 +0530
++++ bluez_utils-5.43_mod/tools/btgatt-server.c	2017-09-19 16:01:00.506477255 +0530
+@@ -28,6 +28,7 @@
+ #include <getopt.h>
+ #include <unistd.h>
+ #include <errno.h>
++#include <string.h>
+ 
+ #include "lib/bluetooth.h"
+ #include "lib/hci.h"
+@@ -43,12 +44,20 @@
+ #include "src/shared/gatt-db.h"
+ #include "src/shared/gatt-server.h"
+ 
++#if 0
++#include "mpnipc.h"
++#include "evolution_defines.h"
++#include "net_services.h"
++#include "network_libs.h"
++#endif
++
+ #define UUID_GAP			0x1800
+ #define UUID_GATT			0x1801
+-#define UUID_HEART_RATE			0x180d
+-#define UUID_HEART_RATE_MSRMT		0x2a37
+-#define UUID_HEART_RATE_BODY		0x2a38
+-#define UUID_HEART_RATE_CTRL		0x2a39
++#define UUID_DEVICE_INFO                0x180A
++#define UUID_DEVICE_INFO_MANU_NAME      0x2A29
++#define UUID_DEVICE_INFO_MODEL_NUM      0x2A24
++#define UUID_DEVICE_INFO_SYSTEM_ID      0x2A23
++#define UUID_DEVICE_INFO_SERIAL_NUM     0x2A25
+ 
+ #define ATT_CID 4
+ 
+@@ -71,10 +80,16 @@
+ #define COLOR_BOLDGRAY	"\x1B[1;30m"
+ #define COLOR_BOLDWHITE	"\x1B[1;37m"
+ 
+-static const char test_device_name[] = "Very Long Test Device Name For Testing "
+-				"ATT Protocol Operations On GATT Server";
+-static bool verbose = false;
++#define TMPPATH "/tmp"
++
++static char hostName[25];
+ 
++static bool verbose = false;
++static int fd;
++static bdaddr_t src_addr;
++static struct server *server;
++static uint8_t network_id;
++static uint16_t xml_data_current_index;
+ struct server {
+ 	int fd;
+ 	struct bt_att *att;
+@@ -86,27 +101,109 @@
+ 
+ 	uint16_t gatt_svc_chngd_handle;
+ 	bool svc_chngd_enabled;
+-
+-	uint16_t hr_handle;
+-	uint16_t hr_msrmt_handle;
+-	uint16_t hr_energy_expended;
+-	bool hr_visible;
+-	bool hr_msrmt_enabled;
+-	int hr_ee_count;
+-	unsigned int hr_timeout_id;
++        uint16_t wifi_list_lentgth_char_handle;
++        bool wifi_scan_list_length_enabled;
++        uint8_t current_index;
++        uint16_t connection_status_notify_handle;
++        uint16_t connection_status_notify_enabled;
++        uint8_t wifi_config_security_value;
++        uint8_t wifi_config_ssid[22];
++        uint8_t wifi_config_passphrase[20];
++        uint8_t connection_status;
++        uint8_t device_config_status_notify_handle;
++        uint8_t device_config_status_notify_enabled;
++        uint8_t device_config_status;
++        uint8_t *wifi_device_config_xml_data;
++        uint32_t wifi_device_config_xml_data_length;
++        uint32_t wifi_device_config_checksum_value;
+ };
++struct wifi_ap {
++	uint8_t ssid[22];
++        uint8_t bssid[17];
++        uint8_t channel;
++        uint8_t security_value;
++        uint8_t encrypt_value;
++};
++
++static struct wifi_ap Access_Point[26]; 
++
++static int l2cap_le_att_listen_and_accept(bdaddr_t *src, int sec,
++                                                        uint8_t src_type);
++static struct server *server_create(int fd, uint16_t mtu, bool hr_visible);
++static void server_destroy(struct server *server);
++void CfglockWait(void);
++void CfglockSignal(void);
+ 
+ static void print_prompt(void)
+ {
+ 	printf(COLOR_BLUE "[GATT server]" COLOR_OFF "# ");
+ 	fflush(stdout);
+ }
+-
++static void set_advertising_cmd(char *adv_data_cmd)
++{
++    uint8_t index, ch;
++    sprintf(adv_data_cmd, "hcitool -i hci0 cmd 0x08 0x0008 1F 02 01 06 03 03 0a 18 17 09");
++    printf("%s\n", adv_data_cmd);
++    for(index = 0; index < 22; index++)
++    {
++        if(index < strlen(hostName))
++        {
++            ch = hostName[index];
++            sprintf(adv_data_cmd, "%s %x", adv_data_cmd, ch);
++        }
++        else
++            sprintf(adv_data_cmd, "%s 00", adv_data_cmd);
++    }
++}
++static void advertise(void)
++{
++        int ret;
++        uint8_t adv_data_cmd[128];
++        set_advertising_cmd(adv_data_cmd);
++        ret = system("hciconfig hci0 leadv0");
++        ret = system(adv_data_cmd);
++}
++static void create_network_id(void)
++{
++	system("wpa_cli -i wlan0 add_network > networkID.txt");
++	FILE *file = fopen("networkID.txt", "r");
++	if (NULL == file)
++		PRLOG("networkID.txt file couldn't be opened\n");
++	else
++		network_id = fgetc(file);
++	fclose(file);
++	system("rm networkID.txt");
++}
++static void remove_network_id(void)
++{
++        uint8_t command[35];
++	sprintf(command, "wpa_cli -i wlan0 remove_network %c", network_id);
++	system(command);
++}
++static void refresh_network_id(void)
++{
++	remove_network_id();
++	sleep(1);
++	create_network_id();
++}
+ static void att_disconnect_cb(int err, void *user_data)
+ {
+ 	printf("Device disconnected: %s\n", strerror(err));
+-
+-	mainloop_quit();
++        system("rm /ltrx_user/device_cfg.xml"); 
++        advertise();
++        server_destroy(server);
++        free(server);
++        fd = l2cap_le_att_listen_and_accept(&src_addr, BT_SECURITY_LOW, BDADDR_LE_PUBLIC);
++        if (fd < 0) {
++                fprintf(stderr, "Failed to accept L2CAP ATT connection\n");
++                printf("Failed to accept L2CAP ATT connection\n");
++        }
++        server = server_create(fd, 23, false);
++        if (!server) {
++                close(fd);
++                printf("server couldn't be created\n");
++        }
++        printf("Server_Reinitiated\n");        
+ }
+ 
+ static void att_debug_cb(const char *str, void *user_data)
+@@ -271,125 +368,1002 @@
+ 	gatt_db_attribute_write_result(attrib, id, ecode);
+ }
+ 
+-static void hr_msrmt_ccc_read_cb(struct gatt_db_attribute *attrib,
+-					unsigned int id, uint16_t offset,
+-					uint8_t opcode, struct bt_att *att,
+-					void *user_data)
++static void start_scan(void)
+ {
+-	struct server *server = user_data;
+-	uint8_t value[2];
++       int ret = system("wpa_cli -i wlan0 scan only_new=1");
++       sleep(5);
++       ret = system("wpa_cli -i wlan0 scan_results>wifi_list.txt"); 
++}
++static uint8_t populate_scan_list(void)
++{
++       FILE* file = fopen("wifi_list.txt", "r");
++       uint8_t line[256], *token, channel[4], loop;
++       uint8_t scan_list_length = 0, column, token_length;
++       uint8_t delimeter[2] = "\t";
++       if(!fgets(line, sizeof(line), file))
++	       goto done;
++
++       while (fgets(line, sizeof(line), file)) {
++              token = strtok(line, delimeter);
++              column = 1;
++	      if(scan_list_length>25) break;
++              while (token != NULL) {
++                     if(1 == column) memcpy(Access_Point[scan_list_length].bssid, token, 17); 
++                    
++                     else if(5 == column) 
++                     {
++                            memset(Access_Point[scan_list_length].ssid, 0, 22);
++                            token_length = strlen(token) - 1;
++                            if (token_length > 22)
++                            {
++                                  memcpy(Access_Point[scan_list_length].ssid, token, 22);
++                                  Access_Point[scan_list_length].ssid[21] = '\0';
++                            }
++                            else{ 
++                                  memcpy(Access_Point[scan_list_length].ssid, token, token_length);
++                                  Access_Point[scan_list_length].ssid[token_length] = '\0'; 
++                            }
++                     }
++                     else if(2 == column)
++                            Access_Point[scan_list_length].channel = (uint8_t) strtoul(&token[10], NULL, 10);
++                     else if(3 == column) Access_Point[scan_list_length].security_value = 2;
++                     else if(4 == column) Access_Point[scan_list_length].encrypt_value = 255;
++                     token = strtok(NULL, delimeter);
++                     column++;
++              }                     
++              scan_list_length++; 
++       }
++       printf("loop_exited\n");
++done:
++       fclose(file);
++       return scan_list_length; 
++}
+ 
+-	value[0] = server->hr_msrmt_enabled ? 0x01 : 0x00;
+-	value[1] = 0x00;
+ 
+-	gatt_db_attribute_read_result(attrib, id, 0, value, 2);
++static void wifi_scan_list_length_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
++        uint8_t scan_list_length = 20;
++
++        PRLOG("Wifi Scan List Length Read called\n");
++
++        len = 1;
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        len -= offset;
++        start_scan(); 
++        scan_list_length = populate_scan_list();
++        value = len ? &scan_list_length : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++}
++
++static void wifi_scan_list_length_ccc_write_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        const uint8_t *value, size_t len,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t ecode = 0;
++        uint8_t scan_list_length;
++
++        if (!value || len != 2) {
++                ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++                gatt_db_attribute_write_result(attrib, id, ecode);
++                return;
++        }
++
++        if (offset) { 
++                ecode = BT_ATT_ERROR_INVALID_OFFSET;
++                gatt_db_attribute_write_result(attrib, id, ecode);
++                return;
++        }
++
++        if (value[0] == 0x00)
++                server->wifi_scan_list_length_enabled = false;
++        else if (value[0] == 0x01) {
++                if (!server->wifi_scan_list_length_enabled)
++                	server->wifi_scan_list_length_enabled = true;
++          
++                start_scan(); 
++                scan_list_length = populate_scan_list(); 
++        } else
++                ecode = 0x80;
++
++        PRLOG("Wifi Scan List length notification Enabled: %s\n",
++                                server->wifi_scan_list_length_enabled ? "true" : "false");
++        
++        gatt_db_attribute_write_result(attrib, id, ecode);
++        if(server->wifi_scan_list_length_enabled) bt_gatt_server_send_notification(server->gatt,
++                                                server->wifi_list_lentgth_char_handle,
++                                                &scan_list_length, 1);
++}
++
++static void wifi_scan_list_ccc_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t value[2];
++
++        value[0] = server->wifi_scan_list_length_enabled ? 0x01 : 0x00;
++        value[1] = 0x00;
++
++        gatt_db_attribute_read_result(attrib, id, 0, value, 2);
++}
++
++static void wifi_scan_current_index_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data; 
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
++
++        PRLOG("Current_index Read called\n");
++
++        len = 1;
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        len -= offset;
++        value = len ? &server->current_index : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++
+ }
+ 
+-static bool hr_msrmt_cb(void *user_data)
++static void wifi_scan_current_index_write_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        const uint8_t *value, size_t len,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t ecode = 0;
++        PRLOG("current_index write called wih value : %d\n", *value);
++        /*if (!value || len != 1) {
++                ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++                goto done;
++        }
++
++        if (offset) {
++                ecode = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }*/
++     
++        server->current_index = *value;
++        PRLOG("current_index value after write : %d\n", server->current_index);
++        if(0xFF == server->current_index)
++        {
++               start_scan(); 
++               populate_scan_list();
++
++        }
++done:
++        gatt_db_attribute_write_result(attrib, id, ecode);
++}
++
++static void wifi_scan_ssid_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
+ {
+-	struct server *server = user_data;
+-	bool expended_present = !(server->hr_ee_count % 10);
+-	uint16_t len = 2;
+-	uint8_t pdu[4];
+-	uint32_t cur_ee;
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
+ 
+-	pdu[0] = 0x06;
+-	pdu[1] = 90 + (rand() % 40);
++        PRLOG("Wifi Scan SSID Read called\n");
+ 
+-	if (expended_present) {
+-		pdu[0] |= 0x08;
+-		put_le16(server->hr_energy_expended, pdu + 2);
+-		len += 2;
+-	}
++        len = strlen(Access_Point[server->current_index].ssid);
+ 
+-	bt_gatt_server_send_notification(server->gatt,
+-						server->hr_msrmt_handle,
+-						pdu, len);
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
+ 
++        len -= offset;
++        value = len ? &Access_Point[server->current_index].ssid[offset] : NULL;
+ 
+-	cur_ee = server->hr_energy_expended;
+-	server->hr_energy_expended = MIN(UINT16_MAX, cur_ee + 10);
+-	server->hr_ee_count++;
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
+ 
+-	return true;
+ }
+ 
+-static void update_hr_msrmt_simulation(struct server *server)
++static void wifi_scan_bssid_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
+ {
+-	if (!server->hr_msrmt_enabled || !server->hr_visible) {
+-		timeout_remove(server->hr_timeout_id);
+-		return;
+-	}
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
++
++        PRLOG("Wifi Scan BSSID Read called\n");
++
++        len = 17;
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        len -= offset;
++        value = len ? &Access_Point[server->current_index].bssid[offset] : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
+ 
+-	server->hr_timeout_id = timeout_add(1000, hr_msrmt_cb, server, NULL);
+ }
+ 
+-static void hr_msrmt_ccc_write_cb(struct gatt_db_attribute *attrib,
+-					unsigned int id, uint16_t offset,
+-					const uint8_t *value, size_t len,
+-					uint8_t opcode, struct bt_att *att,
+-					void *user_data)
++static void wifi_scan_channel_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
+ {
+-	struct server *server = user_data;
+-	uint8_t ecode = 0;
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
+ 
+-	if (!value || len != 2) {
+-		ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
+-		goto done;
+-	}
++        PRLOG("Wifi Scan Channel Read called\n");
+ 
+-	if (offset) {
+-		ecode = BT_ATT_ERROR_INVALID_OFFSET;
+-		goto done;
+-	}
++        len = 1;
+ 
+-	if (value[0] == 0x00)
+-		server->hr_msrmt_enabled = false;
+-	else if (value[0] == 0x01) {
+-		if (server->hr_msrmt_enabled) {
+-			PRLOG("HR Measurement Already Enabled\n");
+-			goto done;
+-		}
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
+ 
+-		server->hr_msrmt_enabled = true;
+-	} else
+-		ecode = 0x80;
++        len -= offset;
++        value = len ? &Access_Point[server->current_index].channel : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++
++}
++
++static void wifi_scan_security_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
+ 
+-	PRLOG("HR: Measurement Enabled: %s\n",
+-				server->hr_msrmt_enabled ? "true" : "false");
++        PRLOG("Wifi Scan Security Read called\n");
+ 
+-	update_hr_msrmt_simulation(server);
++        len = 1;
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        len -= offset;
++        value = len ? &Access_Point[server->current_index].security_value : NULL;
+ 
+ done:
+-	gatt_db_attribute_write_result(attrib, id, ecode);
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++
+ }
+ 
+-static void hr_control_point_write_cb(struct gatt_db_attribute *attrib,
+-					unsigned int id, uint16_t offset,
+-					const uint8_t *value, size_t len,
+-					uint8_t opcode, struct bt_att *att,
+-					void *user_data)
++static void wifi_scan_encryption_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
+ {
+-	struct server *server = user_data;
+-	uint8_t ecode = 0;
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
+ 
+-	if (!value || len != 1) {
+-		ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
+-		goto done;
+-	}
++        PRLOG("Wifi Scan Encryption Read called\n");
+ 
+-	if (offset) {
+-		ecode = BT_ATT_ERROR_INVALID_OFFSET;
++        len = 1;
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        len -= offset;
++        value = len ? &Access_Point[server->current_index].encrypt_value : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++
++}
++static bool check_connection_status(void)
++{
++	FILE *file;
++	uint8_t status[50];
++
++	PRLOG("executing ---> wpa_cli -i wlan0 status |grep -w ssid > connection_status.txt\n");
++	system("wpa_cli -i wlan0 status>/dev/null");
++        sleep(1);
++	system("wpa_cli -i wlan0 status>/dev/null");
++        sleep(1);
++	system("wpa_cli -i wlan0 status|grep -w ssid>connection_status.txt");
++
++	PRLOG("executing ---> cat connection.txt\n");
++	system("cat connection_status.txt");
++        file = fopen("connection_status.txt", "r");
++	if(NULL == file) 
++        {
++		PRLOG("connection_status.txt file not created\n");
+ 		goto done;
+ 	}
++        if(!fgets(status, sizeof(status), file))
++		goto done;
+ 
+-	if (value[0] == 1) {
+-		PRLOG("HR: Energy Expended value reset\n");
+-		server->hr_energy_expended = 0;
++	status[strlen(status) - 1] = '\0';
++	PRLOG("connection status : %s server->wifi_config ssid : %s  %s\n", status, server->wifi_config_ssid, &status[5]);
++	if(!strcmp(&status[5], server->wifi_config_ssid))
++	{
++		fclose(file);
++		system("rm connection_status.txt");
++		return true;
+ 	}
+ 
+ done:
+-	gatt_db_attribute_write_result(attrib, id, ecode);
++	refresh_network_id();
++	fclose(file);
++	system("rm connection_status.txt");
++	return false;
++}
++static void connect_to_network(void)
++{
++	char command[100];
++	sprintf(command, "wpa_cli -i wlan0 set_network %c ssid '\"%s\"'", network_id, server->wifi_config_ssid);
++	PRLOG("Executing ---> %s\n", command);
++	system(command);
++        sprintf(command, "wpa_cli -i wlan0 set_network %c psk '\"%s\"'", network_id, server->wifi_config_passphrase);
++	PRLOG("Executing ---> %s\n", command);
++        system(command);
++	sprintf(command, "wpa_cli -i wlan0 enable_network %c", network_id);
++	PRLOG("Executing ---> %s\n", command);
++	system(command);
++	sleep(9);
++        	
++}
++static void wifi_config_connection_status_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
++
++        PRLOG("Wifi Config Connection Status Read called\n");
++
++        len = 1;
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        len -= offset;
++        value = len ? &server->connection_status : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++
++}
++
++static void wifi_config_connetion_status_ccc_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t value[2];
++
++        value[0] = server->connection_status_notify_enabled ? 0x01 : 0x00;
++        value[1] = 0x00;
++
++        gatt_db_attribute_read_result(attrib, id, 0, value, 2);
++}
++
++static void wifi_config_connetion_status_ccc_write_cb(struct gatt_db_attribute *attrib,
++                                                      unsigned int id, uint16_t offset,
++                                                      const uint8_t *value, size_t len,
++                                                      uint8_t opcode, struct bt_att *att,
++                                                      void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t ecode = 0;
++
++        if (!value || len != 2) {
++                ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++                gatt_db_attribute_write_result(attrib, id, ecode);
++                return;
++        }
++
++        if (offset) {
++                ecode = BT_ATT_ERROR_INVALID_OFFSET;
++                gatt_db_attribute_write_result(attrib, id, ecode);
++                return;
++        }
++
++        if (value[0] == 0x00)
++                server->connection_status_notify_enabled = false;
++        else if (value[0] == 0x01) {
++                if (!server->connection_status_notify_enabled)
++                	server->connection_status_notify_enabled = true;
++        } else
++                ecode = 0x80;
++
++        PRLOG("Wifi Config Connection Status Notification Enabled: %s\n",
++                                server->connection_status_notify_enabled ? "true" : "false");
++        gatt_db_attribute_write_result(attrib, id, ecode);
++}
++
++static void wifi_config_security_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
++
++        PRLOG("Wifi Config Security Read called\n");
++
++        len = 1;
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        len -= offset;
++        value = len ? &server->wifi_config_security_value : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++}
++
++static void wifi_config_security_write_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        const uint8_t *value, size_t len,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t ecode = 0;
++        /*if (!value || len > 21) {
++                ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++                goto done;
++        }
++
++        if (offset) {
++                ecode = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }*/
++
++        server->wifi_config_security_value = *value;
++        PRLOG("Wifi Config Securiy value after write : %d\n", server->wifi_config_security_value);
++
++done:
++        gatt_db_attribute_write_result(attrib, id, ecode);
++}
++
++static void wifi_config_ssid_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
++
++        PRLOG("Wifi Config SSID Read called\n");
++
++        len = strlen(server->wifi_config_ssid);
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        len -= offset;
++        value = len ? &server->wifi_config_ssid[offset] : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++
++}
++
++static void wifi_config_ssid_write_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        const uint8_t *value, size_t len,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t ecode = 0;
++        if (!value || len > 21) {
++                ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++                goto done;
++        }
++
++        if (offset) {
++                ecode = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++        
++        strncpy(server->wifi_config_ssid, value, len);
++        server->wifi_config_ssid[len] = '\0';
++        PRLOG("Wifi Config SSID value after write : %s\n", server->wifi_config_ssid);
++
++done:
++        gatt_db_attribute_write_result(attrib, id, ecode);
++}
++
++static void wifi_config_passphrase_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
++
++        PRLOG("Wifi Config Passphrase Read called\n");
++
++        len = strlen(server->wifi_config_passphrase);
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        len -= offset;
++        value = len ? &server->wifi_config_passphrase[offset] : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++
++}
++
++static void wifi_config_passphrase_write_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        const uint8_t *value, size_t len,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t ecode = 0;
++        if (!value || len > 19) {
++                ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++                goto done;
++        }
++
++        if (offset) {
++                ecode = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        strncpy(server->wifi_config_passphrase, value, len);
++        server->wifi_config_passphrase[len] = '\0';
++        PRLOG("passphrase value after write : %s\n", server->wifi_config_passphrase);
++done:
++        gatt_db_attribute_write_result(attrib, id, ecode);
++	connect_to_network();
++	if(check_connection_status())
++	{	
++		PRLOG("Connected\n");
++                server->connection_status = 1;
++	}
++        else
++	{
++		PRLOG("Connection Failed\n");	
++                server->connection_status = 0;
++	}
++        if(server->connection_status_notify_enabled)  bt_gatt_server_send_notification(server->gatt,
++                                                server->connection_status_notify_handle,
++                                                &server->connection_status, 1);
++}
++
++static void wifi_device_config_status_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 0;
++        const uint8_t *value = NULL;
++
++        PRLOG("Wifi Device Config Status Read called\n");
++
++        len = 1;
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        len -= offset;
++        value = len ? &server->device_config_status : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++
++}
++
++static bool calculate_checksum(void)
++{
++    uint16_t index;
++    uint32_t calculated_checksum = 0;
++    for(index = 0; index < server->wifi_device_config_xml_data_length; index++)
++    {
++        calculated_checksum += server->wifi_device_config_xml_data[index];
++    }
++    calculated_checksum = ~calculated_checksum;
++    calculated_checksum &= 0xFF;
++    calculated_checksum += 1;
++    if(calculated_checksum != server->wifi_device_config_checksum_value)
++        return false;
++
++    return true;
++}
++static void generate_xml_config_file(void)
++{
++    FILE* file = fopen("/ltrx_user/device_cfg.xml", "w");
++    uint16_t index;
++    for(index = 0; index < server->wifi_device_config_xml_data_length; index++)
++    {
++        fputc(server->wifi_device_config_xml_data[index], file);
++    }
++    fclose(file);
++}
++void trim(char *ch)
++{
++    int count = 0;
++    while(*ch == ' ') { count = count + 1; ch++; }
++    while(*ch != '\0') { *(ch - count) = *ch; ch++;}
++    *(ch - count) = '\0';
++}
++static bool xml_import(void)
++{
++#if 0
++	int rc;
++        mpnipc_msg *msg;
++	ipc_xml_req *pXmlReq;
++	ipc_xml_reply *pXmlReply;
++        msg = malloc(sizeof(mpnipc_msg));
++
++        msg->msg_id = MPN_MSG_IMPORT_CFG;
++        msg->sender_id = MPN_ID_SDKUSER;
++        msg->msgbody_len = sizeof(ipc_xml_req);
++
++        pXmlReq = (ipc_xml_req *)msg->msgbody;
++        strncpy(pXmlReq->filePath, "device_cfg.xml", sizeof(pXmlReq->filePath) - 1);
++        strncpy(pXmlReq->user, "admin", sizeof(pXmlReq->user));	
++        pXmlReq->userFile = strncmp(pXmlReq->filePath, TMPPATH, strlen(TMPPATH)) ? 1 : 0;
++	CfglockWait();
++        rc = (
++            mpnipc_send_and_get_msg(NULL, msg, msg, MPN_DEST_EVO) == MPN_MSG_SUCCESS
++            && (msg->status_flags & MPN_MSG_ERROR_FLAG) == 0
++            );
++	CfglockSignal();
++	PRLOG("rc = %d\n", rc);
++        pXmlReply = (ipc_xml_reply *)msg->msgbody;
++        if(!rc)
++        {
++		if(*pXmlReply->errorMsg)
++                    PRLOG("XML import failed : %s", pXmlReply->errorMsg);
++                else 
++                    PRLOG("XML import failed\n");
++		free(msg);
++		return false;
++        }
++	else
++	{
++            if(*pXmlReply->errorMsg)
++                PRLOG("XML import successful : %s", pXmlReply->errorMsg);
++            else 
++                PRLOG("XML import successful\n");
++        }
++	free(msg);
++	return true;
++#endif
++        FILE *fp;
++        char status[100];
++        system("curl --anyauth -u admin:PASS http://localhost/import/config -X POST --form configrecord=@device_cfg.xml|grep \"<message>All XML configuration records have been imported.</message>\\|<message>ERROR: XML import failed.</message>\" > result");
++        sleep(4);
++        fp = fopen("result", "r");
++        fgets(status, 100, fp);
++        fclose(fp);
++        system("rm result");
++        trim(status);
++        if(!memcmp(status, "<message>ERROR: XML import failed.</message>", 44)) return false;
++        if(!memcmp(status, "<message>All XML configuration records have been imported.</message>", 68)) return true;
++        return false;
++    
++}
++
++static void wifi_device_config_status_ccc_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t value[2];
++
++        value[0] = server->device_config_status_notify_enabled ? 0x01 : 0x00;
++        value[1] = 0x00;
++
++        gatt_db_attribute_read_result(attrib, id, 0, value, 2);
++}
++
++static void wifi_device_config_status_ccc_write_cb(struct gatt_db_attribute *attrib,
++                                                      unsigned int id, uint16_t offset,
++                                                      const uint8_t *value, size_t len,
++                                                      uint8_t opcode, struct bt_att *att,
++                                                      void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t ecode = 0;
++
++        if (!value || len != 2) {
++                ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++                gatt_db_attribute_write_result(attrib, id, ecode);
++                return;
++        }
++
++        if (offset) { 
++                ecode = BT_ATT_ERROR_INVALID_OFFSET;
++                gatt_db_attribute_write_result(attrib, id, ecode);
++                return;
++        }
++
++        if (value[0] == 0x00)
++                server->device_config_status_notify_enabled = false;
++        else if (value[0] == 0x01) {
++                if (!server->device_config_status_notify_enabled)
++                        server->device_config_status_notify_enabled = true;
++        } else
++                ecode = 0x80;
++
++        PRLOG("Wifi Device Config Status Notification Enabled: %s\n",
++                                server->device_config_status_notify_enabled ? "true" : "false");
++        gatt_db_attribute_write_result(attrib, id, ecode);
++}
++
++static void wifi_device_config_xml_data_packet_write_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        const uint8_t *value, size_t len,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t ecode = 0;
++        server->device_config_status = 0;
++        /*if (!value || len > 21) {
++                ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++                goto done;
++        }
++
++        if (offset) {
++                ecode = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }*/
++        if(xml_data_current_index + len > server->wifi_device_config_xml_data_length)
++        {
++             server->device_config_status = 3;
++             goto done;
++        }
++        strncpy(&server->wifi_device_config_xml_data[xml_data_current_index], value, len);
++        server->wifi_device_config_xml_data[xml_data_current_index + len] = '\0';
++        xml_data_current_index += len; 
++        PRLOG("Wifi Device Config Xml data packet value after write : %s\n", server->wifi_device_config_xml_data);
++        PRLOG("xml_data_current_index = %d server->wifi_device_config_xml_data_length = %d\n", xml_data_current_index, server->wifi_device_config_xml_data_length); 
++        if(xml_data_current_index == server->wifi_device_config_xml_data_length)
++        {
++             if(calculate_checksum()) 
++             {
++		  PRLOG("Checksum Matched\n");
++                  generate_xml_config_file();
++		  if(xml_import())
++		  {   
++		      goto done;
++		  }
++		  else
++                  {
++                      server->device_config_status = 5;
++		      goto done;
++		  }
++             }
++             else
++             {
++                  server->device_config_status = 2;
++	          PRLOG("Checksum Mismatch\n");
++	     }	  
++        }
++done:
++        gatt_db_attribute_write_result(attrib, id, ecode);
++        if(server->device_config_status_notify_enabled)  bt_gatt_server_send_notification(server->gatt,
++                                                server->device_config_status_notify_handle,
++                                                &server->device_config_status, 1);
++
++}
++
++static void wifi_device_config_xml_data_length_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 8;
++        const uint8_t *value = NULL;
++        uint8_t *xml_data_length_value = malloc(len * sizeof(uint8_t)); 
++
++        PRLOG("Wifi Device Config Xml data length Read called\n");
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++        
++        uint32_t flag = 0xFF;
++        uint8_t i;
++        for(i = 0; i < len; i++)
++        {
++             xml_data_length_value[i] = server->wifi_device_config_xml_data_length & flag;
++             flag <<= 8;
++        }
++
++        len -= offset;
++        value = len ? xml_data_length_value : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++}
++
++static void wifi_device_config_xml_data_length_write_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        const uint8_t *value, size_t len,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t ecode = 0;
++        /*if (!value || len > 21) {
++                ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++                goto done;
++        }
++
++        if (offset) {
++                ecode = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }*/
++       
++        uint8_t i;
++        for(i = len - 1; i > 0; i--)
++        {
++            server->wifi_device_config_xml_data_length = server->wifi_device_config_xml_data_length + value[i];
++            server->wifi_device_config_xml_data_length = server->wifi_device_config_xml_data_length << 8;
++            PRLOG("i = %d, server->wifi_device_config_xml_data_length = %x\n", i, server->wifi_device_config_xml_data_length);
++        }
++        server->wifi_device_config_xml_data_length = server->wifi_device_config_xml_data_length + value[i];
++        PRLOG("i = %d, server->wifi_device_config_xml_data_length = %x\n", i, server->wifi_device_config_xml_data_length);
++        if(server->wifi_device_config_xml_data != NULL)
++        {
++            free(server->wifi_device_config_xml_data);
++            server->wifi_device_config_xml_data = NULL;
++        }
++        xml_data_current_index = 0;
++        server->wifi_device_config_xml_data = malloc(sizeof(uint8_t) * (server->wifi_device_config_xml_data_length + 1));
++        PRLOG("Wifi Device Config xml data length value after write : %d\n", server->wifi_device_config_xml_data_length);
++
++done:
++        gatt_db_attribute_write_result(attrib, id, ecode);
++        server->device_config_status = 0;
++        if(server->device_config_status_notify_enabled)  bt_gatt_server_send_notification(server->gatt,
++                                                server->device_config_status_notify_handle,
++                                                &server->device_config_status, 1);
++
++}
++
++static void wifi_device_config_checksum_read_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t error = 0;
++        size_t len = 8;
++        const uint8_t *value = NULL;
++        uint8_t *checksum_value = malloc(len * sizeof(uint8_t));
++
++        PRLOG("Wifi Device Config Checksum Read called\n");
++
++        if (offset > len) {
++                error = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }
++
++        uint32_t flag = 0xFF;
++        uint8_t i;
++        for(i = 0; i < len; i++)
++        {
++             checksum_value[i] = server->wifi_device_config_checksum_value & flag;
++             flag <<= 8;
++        }
++        len -= offset;        
++        value = len ? checksum_value : NULL;
++
++done:
++        gatt_db_attribute_read_result(attrib, id, error, value, len);
++}
++
++static void wifi_device_config_checksum_write_cb(struct gatt_db_attribute *attrib,
++                                        unsigned int id, uint16_t offset,
++                                        const uint8_t *value, size_t len,
++                                        uint8_t opcode, struct bt_att *att,
++                                        void *user_data)
++{
++        struct server *server = user_data;
++        uint8_t ecode = 0;
++        /*if (!value || len > 21) {
++                ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++                goto done;
++        }
++
++        if (offset) {
++                ecode = BT_ATT_ERROR_INVALID_OFFSET;
++                goto done;
++        }*/
++
++        uint8_t i;
++        for(i = len - 1; i > 0; i--)
++        {
++            server->wifi_device_config_checksum_value = server->wifi_device_config_checksum_value + value[i];
++            server->wifi_device_config_checksum_value = server->wifi_device_config_checksum_value << 8;
++        }
++        server->wifi_device_config_checksum_value = server->wifi_device_config_checksum_value + value[i];
++
++        PRLOG("Wifi Device Config Checksum value after write : %d\n", server->wifi_device_config_checksum_value);
++
++done:
++        gatt_db_attribute_write_result(attrib, id, ecode);
++        server->device_config_status = 0;
++        if(server->device_config_status_notify_enabled)  bt_gatt_server_send_notification(server->gatt,
++                                                server->device_config_status_notify_handle,
++                                                &server->device_config_status, 1);
+ }
+ 
+ static void confirm_write(struct gatt_db_attribute *attr, int err,
+@@ -450,6 +1424,11 @@
+ 							BT_ATT_OP_WRITE_REQ,
+ 							NULL, confirm_write,
+ 							NULL);
++       
++        server->name_len = strlen(hostName) + 1; 
++        server->device_name = malloc(server->name_len);
++        memcpy(server->device_name, hostName, server->name_len -1);
++        server->device_name[server->name_len -1] = '\0';
+ 
+ 	gatt_db_service_set_active(service, true);
+ }
+@@ -476,72 +1455,440 @@
+ 				BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
+ 				gatt_svc_chngd_ccc_read_cb,
+ 				gatt_svc_chngd_ccc_write_cb, server);
+-
++           
+ 	gatt_db_service_set_active(service, true);
+ }
+ 
+-static void populate_hr_service(struct server *server)
++static void populate_device_info_service(struct server *server)
+ {
+ 	bt_uuid_t uuid;
+-	struct gatt_db_attribute *service, *hr_msrmt, *body;
+-	uint8_t body_loc = 1;  /* "Chest" */
+-
+-	/* Add Heart Rate Service */
+-	bt_uuid16_create(&uuid, UUID_HEART_RATE);
+-	service = gatt_db_add_service(server->db, &uuid, true, 8);
+-	server->hr_handle = gatt_db_attribute_get_handle(service);
+-
+-	/* HR Measurement Characteristic */
+-	bt_uuid16_create(&uuid, UUID_HEART_RATE_MSRMT);
+-	hr_msrmt = gatt_db_service_add_characteristic(service, &uuid,
+-						BT_ATT_PERM_NONE,
+-						BT_GATT_CHRC_PROP_NOTIFY,
+-						NULL, NULL, NULL);
+-	server->hr_msrmt_handle = gatt_db_attribute_get_handle(hr_msrmt);
++        struct gatt_db_attribute *service, *dev_info_manu_name, *dev_info_model_num, *dev_info_serial_num, *dev_info_system_id;
++        uint8_t manu_name[] = "LANTRONIX";
++        uint8_t model_num[10];
++	uint8_t serial_num[25];
++        uint8_t system_id[] = { 0xbb, 0xb8, 0xa1, 0x80, 0x5f, 0x9f, 0x91, 0x71};   
++        //add device info service 
++        bt_uuid16_create(&uuid, UUID_DEVICE_INFO);
++        service = gatt_db_add_service(server->db, &uuid, true, 7);
++
++        //add manufacture name characteristic
++        bt_uuid16_create(&uuid, UUID_DEVICE_INFO_MANU_NAME);
++        dev_info_manu_name = gatt_db_service_add_characteristic(service, &uuid, 
++                                                                BT_ATT_PERM_READ,
++                                                                BT_GATT_CHRC_PROP_READ,
++                                                                NULL, NULL, server);
++
++        gatt_db_attribute_write(dev_info_manu_name, 0, (void *) manu_name, 9,
++                                                        BT_ATT_OP_WRITE_REQ,
++                                                        NULL, confirm_write,
++                                                        NULL);
++        //add model number characteristic
++        bt_uuid16_create(&uuid, UUID_DEVICE_INFO_MODEL_NUM);
++        dev_info_model_num = gatt_db_service_add_characteristic(service, &uuid,
++                                                                 BT_ATT_PERM_READ,
++                                                                 BT_GATT_CHRC_PROP_READ,
++                                                                 NULL, NULL, server);
++        int index = strcspn(hostName, "-");
++        strncpy(model_num, hostName, index);
++        
++        gatt_db_attribute_write(dev_info_model_num, 0, (void *) model_num, 8,
++                                                        BT_ATT_OP_WRITE_REQ,
++                                                        NULL, confirm_write,
++                                                        NULL);
++
++	//add serial number characteristic
++	bt_uuid16_create(&uuid, UUID_DEVICE_INFO_SERIAL_NUM);
++	dev_info_serial_num = gatt_db_service_add_characteristic(service, &uuid,
++			                                         BT_ATT_PERM_READ,
++								 BT_GATT_CHRC_PROP_READ,
++								 NULL, NULL, server);
+ 
+-	bt_uuid16_create(&uuid, GATT_CLIENT_CHARAC_CFG_UUID);
+-	gatt_db_service_add_descriptor(service, &uuid,
+-					BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
+-					hr_msrmt_ccc_read_cb,
+-					hr_msrmt_ccc_write_cb, server);
++        strcpy(serial_num, hostName);
++	PRLOG("serial_num = %s\n", serial_num);
+ 
+-	/*
+-	 * Body Sensor Location Characteristic. Make reads obtain the value from
+-	 * the database.
+-	 */
+-	bt_uuid16_create(&uuid, UUID_HEART_RATE_BODY);
+-	body = gatt_db_service_add_characteristic(service, &uuid,
+-						BT_ATT_PERM_READ,
+-						BT_GATT_CHRC_PROP_READ,
+-						NULL, NULL, server);
+-	gatt_db_attribute_write(body, 0, (void *) &body_loc, sizeof(body_loc),
+-							BT_ATT_OP_WRITE_REQ,
++        gatt_db_attribute_write(dev_info_serial_num, 0, (void *) serial_num, 20,
++			                                BT_ATT_OP_WRITE_REQ,
+ 							NULL, confirm_write,
+ 							NULL);
+ 
+-	/* HR Control Point Characteristic */
+-	bt_uuid16_create(&uuid, UUID_HEART_RATE_CTRL);
+-	gatt_db_service_add_characteristic(service, &uuid,
+-						BT_ATT_PERM_WRITE,
+-						BT_GATT_CHRC_PROP_WRITE,
+-						NULL, hr_control_point_write_cb,
+-						server);
++        //add system ID characteristic
++        bt_uuid16_create(&uuid, UUID_DEVICE_INFO_SYSTEM_ID);
++        dev_info_system_id = gatt_db_service_add_characteristic(service, &uuid,
++                                                                 BT_ATT_PERM_READ,
++                                                                 BT_GATT_CHRC_PROP_READ,
++                                                                 NULL, NULL, server);
++
++        gatt_db_attribute_write(dev_info_system_id, 0, (void *) system_id, 8,
++                                                        BT_ATT_OP_WRITE_REQ,
++                                                        NULL, confirm_write,
++                                                        NULL);
++        gatt_db_service_set_active(service, true);
++}
++
++
++static void populate_wifi_scan_service_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_scan_service_uuid_data[] = {0x1C, 0xDE, 0xB3, 0x08, 0xC1, 0x81, 0x11, 0xE6, 0xA4, 0xA6, 0xCE, 0xC0, 0xC9 ,0x32 ,0xCE, 0x01};    
++    
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_scan_service_uuid_data[loop], 1);    
++}
++static void populate_wifi_scan_list_length_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_list_length_uuid_data[] = {0x1A, 0x60, 0x09, 0xA0, 0xDD, 0x66, 0x49, 0xBB, 0xBB, 0x07, 0x12, 0xC6, 0xB3 ,0xA0 ,0xE6, 0x9E};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_list_length_uuid_data[loop], 1);
++}
++
++static void populate_wifi_scan_current_index_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_scan_current_index_uuid_data[] = {0x6B, 0xB1, 0xCF, 0xDF, 0xC9, 0xEB, 0x4A, 0x44, 0x9A, 0x4D, 0xF9, 0xBC, 0xC6 ,0xC0 ,0x24, 0x43};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_scan_current_index_uuid_data[loop], 1);
++}
+ 
+-	if (server->hr_visible)
+-		gatt_db_service_set_active(service, true);
++static void populate_wifi_scan_ssid_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_scan_ssid_uuid_data[] = {0x9B, 0xC7, 0xF4, 0x39, 0xD7, 0xAE, 0x4A, 0x56, 0x99, 0x47, 0x3A, 0xFF, 0x54 ,0x2D ,0x5B, 0x0B};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_scan_ssid_uuid_data[loop], 1);
++}
++       
++static void populate_wifi_scan_bssid_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_scan_bssid_uuid_data[] = {0x2C, 0x46, 0x1C, 0x73, 0xC6, 0x87, 0x4E, 0x99, 0x82, 0x2B, 0x47, 0x61, 0x27 ,0x60 ,0x59, 0x33};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_scan_bssid_uuid_data[loop], 1);
+ }
+ 
++static void populate_wifi_scan_channel_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_scan_channel_uuid_data[] = {0x98, 0xC7, 0xB0, 0xA6, 0x6C, 0xEE, 0x49, 0x44, 0xA3, 0x05, 0x86, 0x16, 0x81 ,0xDF ,0xC8, 0x9A};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_scan_channel_uuid_data[loop], 1);
++}
++
++static void populate_wifi_scan_security_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_scan_security_uuid_data[] = {0x78, 0x6E, 0x88, 0x70, 0x34, 0xF4, 0x4B, 0x3B, 0xA5, 0x77, 0x37, 0xD1, 0xDC ,0x5A ,0x58, 0x73};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_scan_security_uuid_data[loop], 1);
++}
++
++static void populate_wifi_scan_encryption_uuid( uint8_t *des)
++{
++    uint8_t loop; 
++    uint8_t wifi_scan_encryption_uuid_data[] = {0x26, 0x0C, 0xC5, 0x8E, 0xDF, 0xA9, 0x44, 0x5F, 0xA8, 0x89, 0xD8, 0xD2, 0x2C ,0x88 ,0x72, 0x39};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_scan_encryption_uuid_data[loop], 1);
++}
++
++static void populate_wifi_scan_service(struct server *server)
++{
++        bt_uuid_t uuid;
++        struct gatt_db_attribute *service, *wifi_scan_list_len;
++        uint128_t wifi_scan_128_uuid;
++        
++        /* Add Wifi Scan Service */
++        populate_wifi_scan_service_uuid(wifi_scan_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_scan_128_uuid);
++        service = gatt_db_add_service(server->db, &uuid, true, 16);
++
++        /* Wifi Scan List Length Characteristic */
++        populate_wifi_scan_list_length_uuid(wifi_scan_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_scan_128_uuid);
++        wifi_scan_list_len = gatt_db_service_add_characteristic(service, &uuid,
++                                                BT_ATT_PERM_READ,
++                                                BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_NOTIFY,
++                                                wifi_scan_list_length_read_cb, NULL, NULL);
++        if(!wifi_scan_list_len) printf("failed adding characterictic");
++        server->wifi_list_lentgth_char_handle = gatt_db_attribute_get_handle(wifi_scan_list_len);
++
++        bt_uuid16_create(&uuid, GATT_CLIENT_CHARAC_CFG_UUID);
++        gatt_db_service_add_descriptor(service, &uuid,
++                                        BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++                                        wifi_scan_list_ccc_read_cb,
++                                        wifi_scan_list_length_ccc_write_cb, server);
++                 
++        /* Current Index Characteristic */
++        populate_wifi_scan_current_index_uuid(wifi_scan_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_scan_128_uuid);
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++                                           BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_WRITE,
++                                           wifi_scan_current_index_read_cb, wifi_scan_current_index_write_cb, server);
++
++        /* SSID Characteristic */
++        populate_wifi_scan_ssid_uuid(wifi_scan_128_uuid.data);        
++        bt_uuid128_create(&uuid, wifi_scan_128_uuid);
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_READ,
++                                           BT_GATT_CHRC_PROP_READ,
++                                           wifi_scan_ssid_read_cb, NULL, server);
++
++        /* BSSID Characterictic */
++        populate_wifi_scan_bssid_uuid(wifi_scan_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_scan_128_uuid);
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_READ,
++                                           BT_GATT_CHRC_PROP_READ,
++                                           wifi_scan_bssid_read_cb, NULL, server);
++
++        /* Channel Characteristic */
++        populate_wifi_scan_channel_uuid(wifi_scan_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_scan_128_uuid);
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_READ,
++                                           BT_GATT_CHRC_PROP_READ,
++                                           wifi_scan_channel_read_cb, NULL, server);
++         
++        /* Security Characteristic */
++        populate_wifi_scan_security_uuid(wifi_scan_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_scan_128_uuid);
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_READ,
++                                           BT_GATT_CHRC_PROP_READ,
++                                           wifi_scan_security_read_cb, NULL, server);
++
++        /* Encryption Characteristic */
++        populate_wifi_scan_encryption_uuid(wifi_scan_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_scan_128_uuid);
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_READ,
++                                           BT_GATT_CHRC_PROP_READ,
++                                           wifi_scan_encryption_read_cb, NULL, server);
++          
++        server->current_index = 0; 
++        server->wifi_scan_list_length_enabled = false;
++        gatt_db_service_set_active(service, true);        
++}
++static void populate_wifi_config_service_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_config_service_uuid_data[] = {0x1B, 0x7E, 0x82, 0x51, 0x28, 0x77, 0x41, 0xC3, 0xB4, 0x6E, 0xCF, 0x05, 0x7C ,0x56 ,0x20, 0x23};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_config_service_uuid_data[loop], 1);
++}
++static void populate_wifi_config_connection_status_notify_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_config_connection_status_notify_uuid_data[] = {0x8A, 0xC3, 0x2D, 0x3F, 0x5C, 0xB9, 0x4D, 0x44, 0xBE, 0xC2, 0xEE, 0x68, 0x91 ,0x69 ,0xF6, 0x26};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_config_connection_status_notify_uuid_data[loop], 1);
++}
++static void populate_wifi_config_security_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_config_security_uuid_data[] = {0xCA, 0xC2, 0xAB, 0xA4, 0xED, 0xBB, 0x4C, 0x4A, 0xBB, 0xAF, 0x0A, 0x84, 0xA5 ,0xCD ,0x93, 0xA1};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_config_security_uuid_data[loop], 1);
++}
++static void populate_wifi_config_ssid_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_config_ssid_uuid_data[] = {0xAC, 0xA0, 0xEF, 0x7C, 0xEE, 0xAA, 0x48, 0xAD, 0x95, 0x08, 0x19, 0xA6, 0xCE ,0xF6 ,0xB3, 0x56};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_config_ssid_uuid_data[loop], 1);
++}
++
++static void populate_wifi_config_passphrase_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_config_passphrase_uuid_data[] = {0x40, 0xB7, 0xDE, 0x33, 0x93, 0xE4, 0x4C, 0x8B, 0xA8, 0x76, 0xD8, 0x33, 0xB4 ,0x15 ,0xA6, 0xCE};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_config_passphrase_uuid_data[loop], 1);
++}
++static void populate_wifi_config_service(struct server *server)
++{
++        bt_uuid_t uuid;
++        struct gatt_db_attribute *service, *connection_status_notify_handle;
++        uint128_t wifi_config_128_uuid;
++
++        /* Add Wifi Config Service */
++        populate_wifi_config_service_uuid(wifi_config_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_config_128_uuid);
++        service = gatt_db_add_service(server->db, &uuid, true, 10);
++
++        /* Wifi Connection Status Notification Characteristic */
++        populate_wifi_config_connection_status_notify_uuid(wifi_config_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_config_128_uuid);
++        connection_status_notify_handle = gatt_db_service_add_characteristic(service, &uuid,
++                                                BT_ATT_PERM_READ,
++                                                BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_NOTIFY,
++                                                wifi_config_connection_status_read_cb, NULL, NULL);
++  
++        server->connection_status_notify_handle = gatt_db_attribute_get_handle(connection_status_notify_handle);
++
++        bt_uuid16_create(&uuid, GATT_CLIENT_CHARAC_CFG_UUID);
++        gatt_db_service_add_descriptor(service, &uuid,
++                                        BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++                                        wifi_config_connetion_status_ccc_read_cb,
++                                        wifi_config_connetion_status_ccc_write_cb, server);
++
++        /* Security Characteristic */
++        populate_wifi_config_security_uuid(wifi_config_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_config_128_uuid);
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++                                           BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_WRITE,
++                                           wifi_config_security_read_cb, wifi_config_security_write_cb, server);
++
++        /* SSID Characteristic */
++        populate_wifi_config_ssid_uuid(wifi_config_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_config_128_uuid);
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++                                           BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_WRITE,
++                                           wifi_config_ssid_read_cb, wifi_config_ssid_write_cb, server);
++
++        /* Passphrase Characteristic */
++        populate_wifi_config_passphrase_uuid(wifi_config_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_config_128_uuid);
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++                                           BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_WRITE,
++                                           wifi_config_passphrase_read_cb, wifi_config_passphrase_write_cb, server);
++
++        server->connection_status = 0;
++	server->connection_status_notify_enabled = false;
++        gatt_db_service_set_active(service, true);
++
++}
++static void populate_wifi_device_config_service_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_device_config_service_uuid_data[] = {0xF0, 0xDD, 0x79, 0x9C, 0xC8, 0x83, 0x49, 0x76, 0x96, 0xA5, 0x8B, 0xB4, 0x90 ,0x7F ,0x41, 0xD6};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_device_config_service_uuid_data[loop], 1);
++}
++static void populate_wifi_device_config_status_notify_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_device_config_status_notify_uuid_data[] = {0x3B, 0xC6, 0x3A, 0xDD, 0x3B, 0x52, 0x4A, 0x3F, 0xBE, 0x47, 0xA0, 0x48, 0xBC ,0xA2 ,0x48, 0xBF};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_device_config_status_notify_uuid_data[loop], 1);
++}
++
++static void populate_wifi_device_config_xml_data_packet_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_device_config_xml_data_packet_uuid_data[] = {0x24, 0xFD, 0x0A, 0x4F, 0x68, 0x09, 0x44, 0xAB, 0x95, 0x96, 0x52, 0x3D, 0xB9 ,0xEB ,0xCD, 0x47};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_device_config_xml_data_packet_uuid_data[loop], 1);
++}
++
++static void populate_wifi_device_config_xml_data_packet_length_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_device_config_xml_data_packet_length_uuid_data[] = {0x60, 0x65, 0x68, 0x16, 0x87, 0xBE, 0x4C, 0xD0, 0x9C, 0xA7, 0xE8, 0xB8, 0x10 ,0xE1 ,0xEC, 0x23};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_device_config_xml_data_packet_length_uuid_data[loop], 1);
++}
++
++static void populate_wifi_device_config_checksum_uuid( uint8_t *des)
++{
++    uint8_t loop;
++    uint8_t wifi_device_config_checksum_uuid_data[] = {0x0B, 0x8E, 0x5A, 0x44, 0x33, 0x71, 0x4D, 0x0C, 0xB3, 0x8B, 0x56, 0xC1, 0xE0 ,0x34 ,0x48, 0xF6};
++
++    for(loop = 0; loop <= 15; loop++)
++          memcpy(&des[loop], &wifi_device_config_checksum_uuid_data[loop], 1);
++}
++ 
++static void populate_wifi_device_config_service(struct server *server)
++{
++        bt_uuid_t uuid;
++        struct gatt_db_attribute *service, *device_config_status_notify_handle;
++        uint128_t wifi_device_config_128_uuid;
++
++        /* Add Wifi Device Config Service */
++        populate_wifi_device_config_service_uuid(wifi_device_config_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_device_config_128_uuid);
++        service = gatt_db_add_service(server->db, &uuid, true, 10);
++
++        /* Wifi Device Configuration Status Notification Characteristic */
++        populate_wifi_device_config_status_notify_uuid(wifi_device_config_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_device_config_128_uuid);
++        device_config_status_notify_handle = gatt_db_service_add_characteristic(service, &uuid,
++                                                BT_ATT_PERM_READ,
++                                                BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_NOTIFY,
++                                                wifi_device_config_status_read_cb, NULL, server);
++
++        server->device_config_status_notify_handle = gatt_db_attribute_get_handle(device_config_status_notify_handle);
++
++        bt_uuid16_create(&uuid, GATT_CLIENT_CHARAC_CFG_UUID);
++        gatt_db_service_add_descriptor(service, &uuid,
++                                        BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++                                        wifi_device_config_status_ccc_read_cb,
++                                        wifi_device_config_status_ccc_write_cb, server);
++         
++        /* Wifi Device Config XML Data Packet Characteristics */
++        populate_wifi_device_config_xml_data_packet_uuid(wifi_device_config_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_device_config_128_uuid);
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_WRITE,
++                                           BT_GATT_CHRC_PROP_WRITE,
++                                           NULL, wifi_device_config_xml_data_packet_write_cb, server);
++
++        /* Wifi Device Config XML Data Packet Length Characteristics */
++        populate_wifi_device_config_xml_data_packet_length_uuid(wifi_device_config_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_device_config_128_uuid);        
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++                                           BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_WRITE,
++                                           wifi_device_config_xml_data_length_read_cb, wifi_device_config_xml_data_length_write_cb, server);
++
++        /* Wifi Device Config Checksum Characteristics */
++        populate_wifi_device_config_checksum_uuid(wifi_device_config_128_uuid.data);
++        bt_uuid128_create(&uuid, wifi_device_config_128_uuid);
++        gatt_db_service_add_characteristic(service, &uuid,
++                                           BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++                                           BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_WRITE,
++                                           wifi_device_config_checksum_read_cb, wifi_device_config_checksum_write_cb, server);
++
++        server->device_config_status = 0;
++        server->wifi_device_config_xml_data_length = 0;
++        server->wifi_device_config_xml_data = NULL;
++        server->wifi_device_config_checksum_value = 0;
++        server->device_config_status_notify_enabled = false;
++        gatt_db_service_set_active(service, true);
++
++}        
+ static void populate_db(struct server *server)
+ {
+ 	populate_gap_service(server);
+ 	populate_gatt_service(server);
+-	populate_hr_service(server);
++        populate_device_info_service(server);
++        populate_wifi_scan_service(server);
++        populate_wifi_config_service(server);
++        populate_wifi_device_config_service(server);
+ }
+ 
+ static struct server *server_create(int fd, uint16_t mtu, bool hr_visible)
+ {
+ 	struct server *server;
+-	size_t name_len = strlen(test_device_name);
+ 
+ 	server = new0(struct server, 1);
+ 	if (!server) {
+@@ -565,17 +1912,6 @@
+ 		fprintf(stderr, "Failed to set ATT disconnect handler\n");
+ 		goto fail;
+ 	}
+-
+-	server->name_len = name_len + 1;
+-	server->device_name = malloc(name_len + 1);
+-	if (!server->device_name) {
+-		fprintf(stderr, "Failed to allocate memory for device name\n");
+-		goto fail;
+-	}
+-
+-	memcpy(server->device_name, test_device_name, name_len);
+-	server->device_name[name_len] = '\0';
+-
+ 	server->fd = fd;
+ 	server->db = gatt_db_new();
+ 	if (!server->db) {
+@@ -589,7 +1925,6 @@
+ 		goto fail;
+ 	}
+ 
+-	server->hr_visible = hr_visible;
+ 
+ 	if (verbose) {
+ 		bt_att_set_debug(server->att, att_debug_cb, "att: ", NULL);
+@@ -597,9 +1932,6 @@
+ 							"server: ", NULL);
+ 	}
+ 
+-	/* Random seed for generating fake Heart Rate measurements */
+-	srand(time(NULL));
+-
+ 	/* bt_gatt_server already holds a reference */
+ 	populate_db(server);
+ 
+@@ -607,7 +1939,6 @@
+ 
+ fail:
+ 	gatt_db_unref(server->db);
+-	free(server->device_name);
+ 	bt_att_unref(server->att);
+ 	free(server);
+ 
+@@ -616,7 +1947,6 @@
+ 
+ static void server_destroy(struct server *server)
+ {
+-	timeout_remove(server->hr_timeout_id);
+ 	bt_gatt_server_unref(server->gatt);
+ 	gatt_db_unref(server->db);
+ }
+@@ -628,22 +1958,13 @@
+ 
+ 	printf("Options:\n"
+ 		"\t-i, --index <id>\t\tSpecify adapter index, e.g. hci0\n"
+-		"\t-m, --mtu <mtu>\t\t\tThe ATT MTU to use\n"
+-		"\t-s, --security-level <sec>\tSet security level (low|"
+-								"medium|high)\n"
+-		"\t-t, --type [random|public] \t The source address type\n"
+ 		"\t-v, --verbose\t\t\tEnable extra logging\n"
+-		"\t-r, --heart-rate\t\tEnable Heart Rate service\n"
+ 		"\t-h, --help\t\t\tDisplay help\n");
+ }
+ 
+ static struct option main_options[] = {
+ 	{ "index",		1, 0, 'i' },
+-	{ "mtu",		1, 0, 'm' },
+-	{ "security-level",	1, 0, 's' },
+-	{ "type",		1, 0, 't' },
+ 	{ "verbose",		0, 0, 'v' },
+-	{ "heart-rate",		0, 0, 'r' },
+ 	{ "help",		0, 0, 'h' },
+ 	{ }
+ };
+@@ -710,414 +2031,6 @@
+ 	return -1;
+ }
+ 
+-static void notify_usage(void)
+-{
+-	printf("Usage: notify [options] <value_handle> <value>\n"
+-					"Options:\n"
+-					"\t -i, --indicate\tSend indication\n"
+-					"e.g.:\n"
+-					"\tnotify 0x0001 00 01 00\n");
+-}
+-
+-static struct option notify_options[] = {
+-	{ "indicate",	0, 0, 'i' },
+-	{ }
+-};
+-
+-static bool parse_args(char *str, int expected_argc,  char **argv, int *argc)
+-{
+-	char **ap;
+-
+-	for (ap = argv; (*ap = strsep(&str, " \t")) != NULL;) {
+-		if (**ap == '\0')
+-			continue;
+-
+-		(*argc)++;
+-		ap++;
+-
+-		if (*argc > expected_argc)
+-			return false;
+-	}
+-
+-	return true;
+-}
+-
+-static void conf_cb(void *user_data)
+-{
+-	PRLOG("Received confirmation\n");
+-}
+-
+-static void cmd_notify(struct server *server, char *cmd_str)
+-{
+-	int opt, i;
+-	char *argvbuf[516];
+-	char **argv = argvbuf;
+-	int argc = 1;
+-	uint16_t handle;
+-	char *endptr = NULL;
+-	int length;
+-	uint8_t *value = NULL;
+-	bool indicate = false;
+-
+-	if (!parse_args(cmd_str, 514, argv + 1, &argc)) {
+-		printf("Too many arguments\n");
+-		notify_usage();
+-		return;
+-	}
+-
+-	optind = 0;
+-	argv[0] = "notify";
+-	while ((opt = getopt_long(argc, argv, "+i", notify_options,
+-								NULL)) != -1) {
+-		switch (opt) {
+-		case 'i':
+-			indicate = true;
+-			break;
+-		default:
+-			notify_usage();
+-			return;
+-		}
+-	}
+-
+-	argc -= optind;
+-	argv += optind;
+-
+-	if (argc < 1) {
+-		notify_usage();
+-		return;
+-	}
+-
+-	handle = strtol(argv[0], &endptr, 16);
+-	if (!endptr || *endptr != '\0' || !handle) {
+-		printf("Invalid handle: %s\n", argv[0]);
+-		return;
+-	}
+-
+-	length = argc - 1;
+-
+-	if (length > 0) {
+-		if (length > UINT16_MAX) {
+-			printf("Value too long\n");
+-			return;
+-		}
+-
+-		value = malloc(length);
+-		if (!value) {
+-			printf("Failed to construct value\n");
+-			return;
+-		}
+-
+-		for (i = 1; i < argc; i++) {
+-			if (strlen(argv[i]) != 2) {
+-				printf("Invalid value byte: %s\n",
+-								argv[i]);
+-				goto done;
+-			}
+-
+-			value[i-1] = strtol(argv[i], &endptr, 16);
+-			if (endptr == argv[i] || *endptr != '\0'
+-							|| errno == ERANGE) {
+-				printf("Invalid value byte: %s\n",
+-								argv[i]);
+-				goto done;
+-			}
+-		}
+-	}
+-
+-	if (indicate) {
+-		if (!bt_gatt_server_send_indication(server->gatt, handle,
+-							value, length,
+-							conf_cb, NULL, NULL))
+-			printf("Failed to initiate indication\n");
+-	} else if (!bt_gatt_server_send_notification(server->gatt, handle,
+-								value, length))
+-		printf("Failed to initiate notification\n");
+-
+-done:
+-	free(value);
+-}
+-
+-static void heart_rate_usage(void)
+-{
+-	printf("Usage: heart-rate on|off\n");
+-}
+-
+-static void cmd_heart_rate(struct server *server, char *cmd_str)
+-{
+-	bool enable;
+-	uint8_t pdu[4];
+-	struct gatt_db_attribute *attr;
+-
+-	if (!cmd_str) {
+-		heart_rate_usage();
+-		return;
+-	}
+-
+-	if (strcmp(cmd_str, "on") == 0)
+-		enable = true;
+-	else if (strcmp(cmd_str, "off") == 0)
+-		enable = false;
+-	else {
+-		heart_rate_usage();
+-		return;
+-	}
+-
+-	if (enable == server->hr_visible) {
+-		printf("Heart Rate Service already %s\n",
+-						enable ? "visible" : "hidden");
+-		return;
+-	}
+-
+-	server->hr_visible = enable;
+-	attr = gatt_db_get_attribute(server->db, server->hr_handle);
+-	gatt_db_service_set_active(attr, server->hr_visible);
+-	update_hr_msrmt_simulation(server);
+-
+-	if (!server->svc_chngd_enabled)
+-		return;
+-
+-	put_le16(server->hr_handle, pdu);
+-	put_le16(server->hr_handle + 7, pdu + 2);
+-
+-	server->hr_msrmt_enabled = false;
+-	update_hr_msrmt_simulation(server);
+-
+-	bt_gatt_server_send_indication(server->gatt,
+-						server->gatt_svc_chngd_handle,
+-						pdu, 4, conf_cb, NULL, NULL);
+-}
+-
+-static void print_uuid(const bt_uuid_t *uuid)
+-{
+-	char uuid_str[MAX_LEN_UUID_STR];
+-	bt_uuid_t uuid128;
+-
+-	bt_uuid_to_uuid128(uuid, &uuid128);
+-	bt_uuid_to_string(&uuid128, uuid_str, sizeof(uuid_str));
+-
+-	printf("%s\n", uuid_str);
+-}
+-
+-static void print_incl(struct gatt_db_attribute *attr, void *user_data)
+-{
+-	struct server *server = user_data;
+-	uint16_t handle, start, end;
+-	struct gatt_db_attribute *service;
+-	bt_uuid_t uuid;
+-
+-	if (!gatt_db_attribute_get_incl_data(attr, &handle, &start, &end))
+-		return;
+-
+-	service = gatt_db_get_attribute(server->db, start);
+-	if (!service)
+-		return;
+-
+-	gatt_db_attribute_get_service_uuid(service, &uuid);
+-
+-	printf("\t  " COLOR_GREEN "include" COLOR_OFF " - handle: "
+-					"0x%04x, - start: 0x%04x, end: 0x%04x,"
+-					"uuid: ", handle, start, end);
+-	print_uuid(&uuid);
+-}
+-
+-static void print_desc(struct gatt_db_attribute *attr, void *user_data)
+-{
+-	printf("\t\t  " COLOR_MAGENTA "descr" COLOR_OFF
+-					" - handle: 0x%04x, uuid: ",
+-					gatt_db_attribute_get_handle(attr));
+-	print_uuid(gatt_db_attribute_get_type(attr));
+-}
+-
+-static void print_chrc(struct gatt_db_attribute *attr, void *user_data)
+-{
+-	uint16_t handle, value_handle;
+-	uint8_t properties;
+-	uint16_t ext_prop;
+-	bt_uuid_t uuid;
+-
+-	if (!gatt_db_attribute_get_char_data(attr, &handle,
+-								&value_handle,
+-								&properties,
+-								&ext_prop,
+-								&uuid))
+-		return;
+-
+-	printf("\t  " COLOR_YELLOW "charac" COLOR_OFF
+-				" - start: 0x%04x, value: 0x%04x, "
+-				"props: 0x%02x, ext_prop: 0x%04x, uuid: ",
+-				handle, value_handle, properties, ext_prop);
+-	print_uuid(&uuid);
+-
+-	gatt_db_service_foreach_desc(attr, print_desc, NULL);
+-}
+-
+-static void print_service(struct gatt_db_attribute *attr, void *user_data)
+-{
+-	struct server *server = user_data;
+-	uint16_t start, end;
+-	bool primary;
+-	bt_uuid_t uuid;
+-
+-	if (!gatt_db_attribute_get_service_data(attr, &start, &end, &primary,
+-									&uuid))
+-		return;
+-
+-	printf(COLOR_RED "service" COLOR_OFF " - start: 0x%04x, "
+-				"end: 0x%04x, type: %s, uuid: ",
+-				start, end, primary ? "primary" : "secondary");
+-	print_uuid(&uuid);
+-
+-	gatt_db_service_foreach_incl(attr, print_incl, server);
+-	gatt_db_service_foreach_char(attr, print_chrc, NULL);
+-
+-	printf("\n");
+-}
+-
+-static void cmd_services(struct server *server, char *cmd_str)
+-{
+-	gatt_db_foreach_service(server->db, NULL, print_service, server);
+-}
+-
+-static bool convert_sign_key(char *optarg, uint8_t key[16])
+-{
+-	int i;
+-
+-	if (strlen(optarg) != 32) {
+-		printf("sign-key length is invalid\n");
+-		return false;
+-	}
+-
+-	for (i = 0; i < 16; i++) {
+-		if (sscanf(optarg + (i * 2), "%2hhx", &key[i]) != 1)
+-			return false;
+-	}
+-
+-	return true;
+-}
+-
+-static void set_sign_key_usage(void)
+-{
+-	printf("Usage: set-sign-key [options]\nOptions:\n"
+-		"\t -c, --sign-key <remote csrk>\tRemote CSRK\n"
+-		"e.g.:\n"
+-		"\tset-sign-key -c D8515948451FEA320DC05A2E88308188\n");
+-}
+-
+-static bool remote_counter(uint32_t *sign_cnt, void *user_data)
+-{
+-	static uint32_t cnt = 0;
+-
+-	if (*sign_cnt < cnt)
+-		return false;
+-
+-	cnt = *sign_cnt;
+-
+-	return true;
+-}
+-
+-static void cmd_set_sign_key(struct server *server, char *cmd_str)
+-{
+-	char *argv[3];
+-	int argc = 0;
+-	uint8_t key[16];
+-
+-	memset(key, 0, 16);
+-
+-	if (!parse_args(cmd_str, 2, argv, &argc)) {
+-		set_sign_key_usage();
+-		return;
+-	}
+-
+-	if (argc != 2) {
+-		set_sign_key_usage();
+-		return;
+-	}
+-
+-	if (!strcmp(argv[0], "-c") || !strcmp(argv[0], "--sign-key")) {
+-		if (convert_sign_key(argv[1], key))
+-			bt_att_set_remote_key(server->att, key, remote_counter,
+-									server);
+-	} else
+-		set_sign_key_usage();
+-}
+-
+-static void cmd_help(struct server *server, char *cmd_str);
+-
+-typedef void (*command_func_t)(struct server *server, char *cmd_str);
+-
+-static struct {
+-	char *cmd;
+-	command_func_t func;
+-	char *doc;
+-} command[] = {
+-	{ "help", cmd_help, "\tDisplay help message" },
+-	{ "notify", cmd_notify, "\tSend handle-value notification" },
+-	{ "heart-rate", cmd_heart_rate, "\tHide/Unhide Heart Rate Service" },
+-	{ "services", cmd_services, "\tEnumerate all services" },
+-	{ "set-sign-key", cmd_set_sign_key,
+-			"\tSet remote signing key for signed write command"},
+-	{ }
+-};
+-
+-static void cmd_help(struct server *server, char *cmd_str)
+-{
+-	int i;
+-
+-	printf("Commands:\n");
+-	for (i = 0; command[i].cmd; i++)
+-		printf("\t%-15s\t%s\n", command[i].cmd, command[i].doc);
+-}
+-
+-static void prompt_read_cb(int fd, uint32_t events, void *user_data)
+-{
+-	ssize_t read;
+-	size_t len = 0;
+-	char *line = NULL;
+-	char *cmd = NULL, *args;
+-	struct server *server = user_data;
+-	int i;
+-
+-	if (events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+-		mainloop_quit();
+-		return;
+-	}
+-
+-	read = getline(&line, &len, stdin);
+-	if (read < 0)
+-		return;
+-
+-	if (read <= 1) {
+-		cmd_help(server, NULL);
+-		print_prompt();
+-		return;
+-	}
+-
+-	line[read-1] = '\0';
+-	args = line;
+-
+-	while ((cmd = strsep(&args, " \t")))
+-		if (*cmd != '\0')
+-			break;
+-
+-	if (!cmd)
+-		goto failed;
+-
+-	for (i = 0; command[i].cmd; i++) {
+-		if (strcmp(command[i].cmd, cmd) == 0)
+-			break;
+-	}
+-
+-	if (command[i].cmd)
+-		command[i].func(server, args);
+-	else
+-		fprintf(stderr, "Unknown command: %s\n", line);
+-
+-failed:
+-	print_prompt();
+-
+-	free(line);
+-}
+-
+ static void signal_cb(int signum, void *user_data)
+ {
+ 	switch (signum) {
+@@ -1129,20 +2042,57 @@
+ 		break;
+ 	}
+ }
+-
++static void getHostName(void)
++{
++        FILE *fp;
++        system("hostname > hostname");
++        fp = fopen("hostname", "r");
++        fscanf(fp, "%s", hostName);
++        fclose(fp);
++        char *ch = hostName;
++        char serial_no[18];
++        while(*ch != '\0')
++        {
++             if(*ch == '-')
++             {
++                 *ch = '\0';
++                 break;
++             }
++             ch++;
++        }
++        system("ifconfig | grep 'eth0' | cut -d' ' -f 11 > serial_number");
++        fp = fopen("serial_number", "r");
++        fgets(serial_no, 18, fp);
++        strcat(hostName, "-");
++        int i = 0, j=0;
++        while(serial_no[i]!='\0')
++        {
++            if(serial_no[i] == ':')
++            {
++                 j=i+1;
++                 while(serial_no[j] != '\0')
++                 {
++                     serial_no[j-1] = serial_no[j];
++                     j++;
++                 }
++                 serial_no[j-1] = serial_no[j];
++             }
++             i++;
++         }
++         strcat(hostName, serial_no);
++         fclose(fp);   
++         system("rm hostname serial_number");
++}
+ int main(int argc, char *argv[])
+ {
+ 	int opt;
+-	bdaddr_t src_addr;
+ 	int dev_id = -1;
+-	int fd;
+ 	int sec = BT_SECURITY_LOW;
+ 	uint8_t src_type = BDADDR_LE_PUBLIC;
+ 	uint16_t mtu = 0;
+ 	sigset_t mask;
+-	bool hr_visible = false;
+-	struct server *server;
+-
++	FILE *fp;
++   
+ 	while ((opt = getopt_long(argc, argv, "+hvrs:t:m:i:",
+ 						main_options, NULL)) != -1) {
+ 		switch (opt) {
+@@ -1152,56 +2102,12 @@
+ 		case 'v':
+ 			verbose = true;
+ 			break;
+-		case 'r':
+-			hr_visible = true;
+-			break;
+-		case 's':
+-			if (strcmp(optarg, "low") == 0)
+-				sec = BT_SECURITY_LOW;
+-			else if (strcmp(optarg, "medium") == 0)
+-				sec = BT_SECURITY_MEDIUM;
+-			else if (strcmp(optarg, "high") == 0)
+-				sec = BT_SECURITY_HIGH;
+-			else {
+-				fprintf(stderr, "Invalid security level\n");
+-				return EXIT_FAILURE;
+-			}
+-			break;
+-		case 't':
+-			if (strcmp(optarg, "random") == 0)
+-				src_type = BDADDR_LE_RANDOM;
+-			else if (strcmp(optarg, "public") == 0)
+-				src_type = BDADDR_LE_PUBLIC;
+-			else {
+-				fprintf(stderr,
+-					"Allowed types: random, public\n");
+-				return EXIT_FAILURE;
+-			}
+-			break;
+-		case 'm': {
+-			int arg;
+-
+-			arg = atoi(optarg);
+-			if (arg <= 0) {
+-				fprintf(stderr, "Invalid MTU: %d\n", arg);
+-				return EXIT_FAILURE;
+-			}
+-
+-			if (arg > UINT16_MAX) {
+-				fprintf(stderr, "MTU too large: %d\n", arg);
+-				return EXIT_FAILURE;
+-			}
+-
+-			mtu = (uint16_t) arg;
+-			break;
+-		}
+ 		case 'i':
+ 			dev_id = hci_devid(optarg);
+ 			if (dev_id < 0) {
+ 				perror("Invalid adapter");
+ 				return EXIT_FAILURE;
+ 			}
+-
+ 			break;
+ 		default:
+ 			fprintf(stderr, "Invalid option: %c\n", opt);
+@@ -1224,32 +2130,26 @@
+ 		perror("Adapter not available");
+ 		return EXIT_FAILURE;
+ 	}
++        getHostName();
++        //hostName = NetHostLocalNameGet_malloc(GetNetActiveIndex());
++        PRLOG("HostName = %s\n", hostName);
++
++        advertise();
+ 
+ 	fd = l2cap_le_att_listen_and_accept(&src_addr, sec, src_type);
+ 	if (fd < 0) {
+ 		fprintf(stderr, "Failed to accept L2CAP ATT connection\n");
+ 		return EXIT_FAILURE;
+ 	}
+-
++        create_network_id();
+ 	mainloop_init();
+ 
+-	server = server_create(fd, mtu, hr_visible);
++	server = server_create(fd, 23, 0);
+ 	if (!server) {
+ 		close(fd);
+ 		return EXIT_FAILURE;
+ 	}
+-
+-	if (mainloop_add_fd(fileno(stdin),
+-				EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR,
+-				prompt_read_cb, server, NULL) < 0) {
+-		fprintf(stderr, "Failed to initialize console\n");
+-		server_destroy(server);
+-
+-		return EXIT_FAILURE;
+-	}
+-
+ 	printf("Running GATT server\n");
+-
+ 	sigemptyset(&mask);
+ 	sigaddset(&mask, SIGINT);
+ 	sigaddset(&mask, SIGTERM);
+@@ -1261,8 +2161,10 @@
+ 	mainloop_run();
+ 
+ 	printf("\n\nShutting down...\n");
+-
++        
+ 	server_destroy(server);
+ 
++	system("rm wifi_list.txt");
++        //free(hostName);
+ 	return EXIT_SUCCESS;
+ }

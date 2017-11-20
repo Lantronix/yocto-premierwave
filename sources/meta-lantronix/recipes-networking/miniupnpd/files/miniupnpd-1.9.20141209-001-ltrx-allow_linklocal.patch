@@ -1,0 +1,35 @@
+diff -Naur miniupnpd-1.9.20141209_orig/getifaddr.c miniupnpd-1.9.20141209_mod/getifaddr.c
+--- miniupnpd-1.9.20141209_orig/getifaddr.c	2014-05-06 20:12:49.000000000 +0530
++++ miniupnpd-1.9.20141209_mod/getifaddr.c	2015-04-29 14:39:56.892368828 +0530
+@@ -181,8 +181,7 @@
+ #ifdef ENABLE_IPV6
+ 		case AF_INET6:
+ 			tmpaddr = (const struct sockaddr_in6 *)ife->ifa_addr;
+-			if(!IN6_IS_ADDR_LOOPBACK(&tmpaddr->sin6_addr)
+-			   && !IN6_IS_ADDR_LINKLOCAL(&tmpaddr->sin6_addr))
++			if(!IN6_IS_ADDR_LOOPBACK(&tmpaddr->sin6_addr))
+ 			{
+ 				memcpy(addr->s6_addr,
+ 				       &tmpaddr->sin6_addr,
+@@ -241,8 +240,7 @@
+ 		if(ife->ifa_addr->sa_family == AF_INET6)
+ 		{
+ 			addr = (const struct sockaddr_in6 *)ife->ifa_addr;
+-			if(!IN6_IS_ADDR_LOOPBACK(&addr->sin6_addr)
+-			   && !IN6_IS_ADDR_LINKLOCAL(&addr->sin6_addr))
++			if(!IN6_IS_ADDR_LOOPBACK(&addr->sin6_addr))
+ 			{
+ 				inet_ntop(ife->ifa_addr->sa_family,
+ 				          &addr->sin6_addr,
+diff -Naur miniupnpd-1.9.20141209_orig/miniupnpd.c miniupnpd-1.9.20141209_mod/miniupnpd.c
+--- miniupnpd-1.9.20141209_orig/miniupnpd.c	2014-11-04 22:18:03.000000000 +0530
++++ miniupnpd-1.9.20141209_mod/miniupnpd.c	2015-04-29 14:40:20.668368261 +0530
+@@ -1689,7 +1689,7 @@
+ #endif /* V6SOCKETS_ARE_V6ONLY */
+ #endif /* ENABLE_HTTPS */
+ #ifdef ENABLE_IPV6
+-		if(find_ipv6_addr(NULL, ipv6_addr_for_http_with_brackets, sizeof(ipv6_addr_for_http_with_brackets)) > 0) {
++		if(find_ipv6_addr(ext_if_name, ipv6_addr_for_http_with_brackets, sizeof(ipv6_addr_for_http_with_brackets)) > 0) {
+ 			syslog(LOG_NOTICE, "HTTP IPv6 address given to control points : %s",
+ 			       ipv6_addr_for_http_with_brackets);
+ 		} else {

@@ -1,0 +1,32 @@
+diff -Naur vsftpd-3.0.2/sysutil.c ltrx-vsftpd-3.0.2/sysutil.c
+--- vsftpd-3.0.2/sysutil.c	2015-05-20 15:27:24.852858180 -0700
++++ ltrx-vsftpd-3.0.2/sysutil.c	2015-05-20 15:26:54.402207949 -0700
+@@ -369,16 +369,26 @@
+ int
+ vsf_sysutil_write(const int fd, const void* p_buf, const unsigned int size)
+ {
++  int retry = 0;
+   while (1)
+   {
++    errno = 0;
+     int retval = write(fd, p_buf, size);
+     int saved_errno = errno;
+     vsf_sysutil_check_pending_actions(kVSFSysUtilIO, retval, fd);
+     if (retval < 0 && saved_errno == EINTR)
+     {
+-      continue;
+     }
+-    return retval;
++    else if (retval < 0 && saved_errno == EAGAIN && retry++ < 11)
++    {
++      struct timespec ts = { .tv_sec = 0, .tv_nsec = 40000000 };
++      ts.tv_nsec *= retry;
++      nanosleep(&ts, 0);
++    }
++    else
++    {
++      return retval;
++    }
+   }
+ }
+ 

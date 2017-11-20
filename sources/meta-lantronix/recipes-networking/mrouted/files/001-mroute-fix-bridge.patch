@@ -1,0 +1,210 @@
+--- mrouted-3.9.6/igmp.c	2011-10-23 13:33:36.000000000 +0530
++++ mrouted-3.9.6-mcast-fix-bri/igmp.c	2017-06-05 12:14:00.574833887 +0530
+@@ -8,6 +8,9 @@
+  */
+ 
+ #include "defs.h"
++//LTRX
++#include <ifaddrs.h>
++#include <netdb.h>
+ 
+ /*
+  * Exported variables.
+@@ -26,6 +29,12 @@
+ /* u_char promoted to u_int */
+ static int	igmp_log_level(u_int type, u_int code);
+ 
++//LTRX
++static _Bool bridge_stat_checked = FALSE;
++static _Bool bridge_state_enabled = FALSE;
++static char  bridge_ifc[16];
++//LTRX_END
++
+ /*
+  * Open and initialize the igmp socket, and fill in the non-changing
+  * IP header fields in the output packet buffer.
+@@ -161,6 +170,127 @@
+     }
+ }
+ 
++static _Bool get_bridge_client_ip(char *client_addr)
++{
++    FILE *file = fopen("/tmp/bripaddress", "r");
++    _Bool isFound = FALSE;
++    const char *br_client_ip = "BRCLIENT_IP=";
++    if ( file != NULL )
++    {
++        char line[32];
++        while (fgets(line, sizeof line, file) != NULL) /* read a line */
++        {
++            strtok(line, "\n");
++            if(strstr(line, br_client_ip))
++            {
++                char const *addr = line + strlen(br_client_ip);
++                strcpy(client_addr, addr);
++                isFound = TRUE;
++                break;
++            }
++        }
++        fclose(file);
++    }
++    return isFound;
++}
++
++static _Bool update_bridge_stat(void)
++{
++    const char *br_string = "BRIDGE=";
++    FILE *file = fopen(CONFIG_ETH_BRIDGE, "r");
++    if ( file != NULL )
++    {
++        char line[256]; 
++        while (fgets(line, sizeof line, file) != NULL) /* read a line */
++        {
++            if (strncmp(br_string, line, strlen(br_string))==0)
++            {
++                if(strstr(line, "yes"))
++                {
++                    // bridge true
++                    bridge_state_enabled = TRUE;
++                    break;
++                }
++            }
++        }
++        fclose(file);
++        return TRUE;
++    }
++    return FALSE;
++}
++
++static _Bool update_bridge_interface(void)
++{
++    const char *br_dev = "ethdev";
++    const char *br_eth = "eth0";
++    const char *br_usb = "usb0";
++    _Bool isFoundIfc = FALSE;
++
++    FILE *file = fopen("/etc/brmgr-br0.conf", "r");
++    if ( file != NULL )
++    {
++        char line[256];
++        while (fgets(line, sizeof line, file) != NULL) /* read a line */
++        {
++            if (strstr(line, br_dev))
++            {
++                memset(bridge_ifc, 0, sizeof(bridge_ifc));
++                if(strstr(line, br_eth))
++                {
++                    strncpy(bridge_ifc, br_eth, strlen(br_eth));
++                    isFoundIfc = TRUE;
++                }
++                else if(strstr(line, br_usb))
++                {
++                    strncpy(bridge_ifc, br_usb, strlen(br_usb));
++                    isFoundIfc = TRUE;
++                }
++            }
++        }
++        fclose(file);
++        return isFoundIfc;
++    }
++    return FALSE;
++}
++
++void update_src_address(char *ifc_addr)
++{
++    struct ifaddrs *ifaddr = NULL, *ifa = NULL;
++    int family, s;
++
++    char host[NI_MAXHOST+32];
++    if(-1 == getifaddrs(&ifaddr))
++    {
++        return;
++    }
++    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next)
++    {
++        if (ifa->ifa_addr == NULL)
++            continue;
++
++        if(strncmp(ifa->ifa_name, bridge_ifc, strlen(bridge_ifc))) 
++            continue;
++
++        family = ifa->ifa_addr->sa_family;
++    
++        if (family == AF_INET)
++        {
++            host[0] = 0;
++            s = getnameinfo(ifa->ifa_addr, (family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6), host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
++            if (s != 0)
++            {
++                continue;
++            }
++            memset(ifc_addr, 0 , sizeof(*ifc_addr));
++            strncpy(ifc_addr, host, strlen(host));
++            freeifaddrs(ifaddr);
++            return; 
++        }
++    }
++    freeifaddrs(ifaddr); 
++    return;
++}
++
+ /*
+  * Process a newly received IGMP packet that is sitting in the input
+  * packet buffer.
+@@ -182,6 +312,46 @@
+     src       = ip->ip_src.s_addr;
+     dst       = ip->ip_dst.s_addr;
+ 
++//LTRX
++    if  (! bridge_stat_checked)
++    {
++        bridge_stat_checked = update_bridge_stat();
++        if (bridge_state_enabled)
++        {
++            /* update the bridge interface*/
++            update_bridge_interface();
++        }
++    }
++
++    if (bridge_state_enabled)
++    {
++
++        /* convert incoming request to string presentation*/
++        char *incoming_address;
++        incoming_address = inet_fmt(src, s1, sizeof(s1));
++        char client_address[16];
++        memset(client_address, 0 , sizeof(client_address));
++        if(get_bridge_client_ip(client_address))
++        {
++            /* Get bridge client host and if matches with incoming request then change the request IP address to host address*/
++            if(strncmp(incoming_address, client_address, strlen(client_address))==0)
++            {
++                /* get host eth ip addrs in network order */
++                char bridge_iface_addr[16];
++                int segment = 4;
++                memset(bridge_iface_addr, 0, sizeof(bridge_iface_addr)); 
++                update_src_address(bridge_iface_addr);
++                if (strlen(bridge_iface_addr) > 0)
++                {
++                    u_int32 eth_network_addr = inet_parse(bridge_iface_addr, segment);
++                    src = eth_network_addr;
++                }
++            }
++        }
++    }
++
++//LTRX_END
++
+     /* 
+      * this is most likely a message from the kernel indicating that
+      * a new src grp pair message has arrived and so, it would be 
+--- mrouted-3.9.6/pathnames.h	2011-10-23 13:33:36.000000000 +0530
++++ mrouted-3.9.6-mcast-fix-bri/pathnames.h	2017-06-05 11:59:10.890852236 +0530
+@@ -15,4 +15,7 @@
+ #define _PATH_MROUTED_DUMP	_PATH_MROUTED_RUNDIR "/mrouted.dump"
+ #define _PATH_MROUTED_CACHE	_PATH_MROUTED_RUNDIR "/mrouted.cache"
+ 
++//LTRX
++#define CONFIG_ETH_BRIDGE	"/etc/sysconfig/network-scripts/ifcfg-eth0"
++
+ #endif /* __MROUTED_PATHNAMES_H__ */

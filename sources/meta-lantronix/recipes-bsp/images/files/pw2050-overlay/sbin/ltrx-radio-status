@@ -1,0 +1,43 @@
+#!/bin/sh
+
+# ltrx-radio-status:
+#   
+#
+# RADIO_POWER_EN    (GPIO PC7, Power to radio = active LOW)
+# BT_PWR_DN         (GPIO PC10, Bluetooth On = active HIGH)
+# WL_PWR_DN         (GPIO PC9, Wlan On = active HIGH)
+# WL_32KHZ          (PWM2 on PB13 peripheral B)
+#
+
+RADIO_DEVICES_FILE=/tmp/radio.devices
+RADIO_UP_FILE=/tmp/radio.up
+
+if [ -e $RADIO_DEVICES_FILE ]; then
+	echo "$RADIO_DEVICES_FILE is present"
+else
+	echo "$RADIO_DEVICES_FILE is NOT present"
+	exit 0
+fi
+
+if [ -e $RADIO_UP_FILE ]; then
+	echo "$RADIO_UP_FILE is present"
+else
+	echo "$RADIO_UP_FILE is NOT present"
+fi
+
+RADIO_POWER_EN_dir=`cat /sys/class/gpio/pioC7/direction`
+RADIO_POWER_EN_val=`cat /sys/class/gpio/pioC7/value`
+WL_REG_ON_dir=`cat /sys/class/gpio/pioC9/direction`
+WL_REG_ON_val=`cat /sys/class/gpio/pioC9/value`
+BT_REG_ON_dir=`cat /sys/class/gpio/pioC10/direction`
+BT_REG_ON_val=`cat /sys/class/gpio/pioC10/value`
+PWM2ena=`cat /sys/class/pwm/pwmchip0/pwm2/enable`
+PMICOUT6state=`/usr/bin/i2cget -y 0 0x5b 0x61 b`
+
+echo "RADIO_POWER_EN = $RADIO_POWER_EN_dir $RADIO_POWER_EN_val"
+echo "WL_REG_ON = $WL_REG_ON_dir $WL_REG_ON_val"
+echo "BT_REG_ON = $BT_REG_ON_dir $BT_REG_ON_val"
+echo "pwm2 enabled = $PWM2ena"
+echo "PMIC OUT6 = $PMICOUT6state"
+
+exit 0

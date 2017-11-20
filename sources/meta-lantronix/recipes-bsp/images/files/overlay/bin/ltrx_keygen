@@ -1,0 +1,44 @@
+#!/bin/sh
+#
+
+RSA_HOST_KEY=/etc/dropbear/dropbear_rsa_host_key
+RSA_HOST_TMP_KEY=/tmp/dropbear_rsa_host_key.tmp
+DSS_HOST_KEY=/etc/dropbear/dropbear_dss_host_key
+DSS_HOST_TMP_KEY=/tmp/dropbear_dss_host_key.tmp
+ECDSA_HOST_KEY=/etc/dropbear/dropbear_ecdsa_host_key
+ECDSA_HOST_TMP_KEY=/tmp/dropbear_ecdsa_host_key.tmp
+
+# Make sure the dropbearkey progam exists
+[ -f /usr/bin/dropbearkey ] || exit 0
+
+# Make sure dropbear directory exists
+if [ ! -d /ltrx_private/dropbear ] ; then
+    mkdir -p /ltrx_private/dropbear
+fi
+rm -rf /etc/dropbear
+if [ ! -e /etc/dropbear ] ; then
+    ln -sf /ltrx_private/dropbear /etc/dropbear
+fi
+
+# Check for the Dropbear RSA key
+if [ ! -f $RSA_HOST_KEY ] || [ ! -s $RSA_HOST_KEY ] ; then
+    echo -n "generating rsa key... "
+    /usr/bin/dropbearkey -t rsa -f $RSA_HOST_TMP_KEY > /dev/null 2>&1
+    mv $RSA_HOST_TMP_KEY $RSA_HOST_KEY
+fi
+
+# Check for the Dropbear DSS key
+if [ ! -f $DSS_HOST_KEY ] || [ ! -s $DSS_HOST_KEY ] ; then
+    echo -n "generating dsa key... "
+    /usr/bin/dropbearkey -t dss -f $DSS_HOST_TMP_KEY > /dev/null 2>&1
+    mv $DSS_HOST_TMP_KEY $DSS_HOST_KEY
+fi
+
+# Check for the Dropbear ECDSA key
+if [ ! -f $ECDSA_HOST_KEY ] || [ ! -s $ECDSA_HOST_KEY ] ; then
+    echo -n "generating ecdsa key... "
+    /usr/bin/dropbearkey -t ecdsa -f $ECDSA_HOST_TMP_KEY > /dev/null 2>&1
+    mv $ECDSA_HOST_TMP_KEY $ECDSA_HOST_KEY
+fi
+
+exit $?

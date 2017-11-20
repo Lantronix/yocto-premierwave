@@ -1,0 +1,21 @@
+diff -Naur busybox-1.22.1/networking/ntpd.c ltrx-busybox-1.22.1/networking/ntpd.c
+--- busybox-1.22.1/networking/ntpd.c	2014-01-19 18:38:49.000000000 -0800
++++ ltrx-busybox-1.22.1/networking/ntpd.c	2015-04-21 13:21:21.623402955 -0700
+@@ -934,7 +934,7 @@
+ 	}
+ 	tval = tvn.tv_sec;
+ 	strftime_YYYYMMDDHHMMSS(buf, sizeof(buf), &tval);
+-	bb_error_msg("setting time to %s.%06u (offset %+fs)", buf, (unsigned)tvn.tv_usec, offset);
++	bb_info_msg("setting time to %s.%06u (offset %+fs)", buf, (unsigned)tvn.tv_usec, offset);
+ 
+ 	/* Correct various fields which contain time-relative values: */
+ 
+@@ -2098,7 +2098,7 @@
+ 	}
+ 	if (!(opts & OPT_n)) {
+ 		bb_daemonize_or_rexec(DAEMON_DEVNULL_STDIO, argv);
+-		logmode = LOGMODE_NONE;
++		logmode = LOGMODE_BOTH;
+ 	}
+ #if ENABLE_FEATURE_NTPD_SERVER
+ 	G_listen_fd = -1;

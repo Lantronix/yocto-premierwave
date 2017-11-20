@@ -1,0 +1,153 @@
+#!/bin/sh
+
+# $Id$
+#
+# This file is part of avahi.
+#
+# avahi is free software; you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as
+# published by the Free Software Foundation; either version 2 of the
+# License, or (at your option) any later version.
+#
+# avahi is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+# or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+# License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with avahi; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
+# USA.
+
+set +e
+
+# Command line arguments:
+#   $1 event that happened:
+#          BIND:     Successfully claimed address
+#          CONFLICT: An IP address conflict happened
+#          UNBIND:   The IP address is no longer needed
+#          STOP:     The daemon is terminating
+#   $2 interface name
+#   $3 IP adddress
+
+ETH_IP_FILE="/tmp/ethipaddress"
+BRIDGE_CONF=/etc/brmgr-br0
+if [ -f $BRIDGE_CONF ]; then
+    . $BRIDGE_CONF
+else
+    BRIDGE_ETHDEV="eth0"
+    BRIDGE_WLANDEV="wlan0"
+fi
+
+if [ -x /bin/ip -o -x /sbin/ip ] ; then
+
+    # We have the Linux ip tool from the iproute package
+
+    case "$1" in
+        BIND)
+            ip addr add "$3"/16 brd 169.254.255.255 label "$2:avahi" scope link dev "$2"
+            if [ -e /tmp/bridging.active -a $2 = $BRIDGE_WLANDEV ] ; then
+                echo "ETH_IP=$3" > $ETH_IP_FILE
+                /bin/chmod 777 $ETH_IP_FILE
+                ip addr add "$3"/16 brd 169.254.255.255 label "${BRIDGE_ETHDEV}:avahi" scope link dev $BRIDGE_ETHDEV
+                sleep 1
+            fi
+            type="${2:0:3}"
+            metric=`ltrx_getifinfo GETMETRIC ${2} 0`
+            #handle newline in routes
+            IFS=$'\n'
+            routes=`route -n | grep ${2}`
+            for route in ${routes}
+            do
+                naddress=`echo ${route} | awk -F' ' '{print $1}'`
+                nmetric=`echo ${route} | awk -F' ' '{print $5}'`
+                #skip the default route and static routes if any
+                if [ "$naddress" != "0.0.0.0" -a $nmetric -lt 100 ] ; then
+                    route del -net ${naddress} netmask 255.255.0.0 dev ${2}
+                    route add -net ${naddress} netmask 255.255.0.0 dev ${2} metric ${metric}
+                fi
+            done
+            unset IFS
+            touch /tmp/autoip."$2"
+            metric=`ltrx_getifinfo GETMETRIC ${2} 1`
+            it="ip route add default dev ${2} metric ${metric}"
+            st=0
+            oops="`eval $it 2>&1`"
+            st=$?
+            if [ " $oops" != " " -o " $st" != " 0" ]; then
+               logger -p "user.debug" "avahi-autoipd script failed: ${2}"
+               logger -p "user.debug" "avahi-autoipd script failed: ${it}"
+               logger -p "user.debug" "avahi-autoipd script failed: ${oops}"
+            fi
+            ;;
+
+        CONFLICT|UNBIND|STOP)
+            ip addr del "$3"/16 brd 169.254.255.255 label "$2:avahi" scope link dev "$2"
+            if [ -e /tmp/bridging.active -a $2 = $BRIDGE_WLANDEV ] ; then
+                ip addr del "$3"/16 brd 169.254.255.255 label "${BRIDGE_ETHDEV}:avahi" scope link dev $BRIDGE_ETHDEV
+                ifconfig "${BRIDGE_ETHDEV}:avahi" down
+            fi
+            route del -net 169.254.0.0 netmask 255.255.0.0 dev ${2}
+            ifconfig "$2:avahi" down
+            rm -f /tmp/autoip."$2"
+            ;;
+
+        *)
+            echo "Unknown event $1" >&2
+            exit 1
+            ;;
+    esac
+
+elif [ -x /bin/ifconfig -o -x /sbin/ifconfig ] ; then
+
+    # We have the old ifconfig tool
+
+    case "$1" in
+        BIND)
+            ifconfig "$2:avahi" inet "$3" netmask 255.255.0.0 broadcast 169.254.255.255 up
+            if [ -e /tmp/bridging.active -a $2 = $BRIDGE_WLANDEV ] ; then
+                echo "ETH_IP=$3" > $ETH_IP_FILE
+                /bin/chmod 777 $ETH_IP_FILE
+                ifconfig "${BRIDGE_ETHDEV}:avahi" inet "$3" netmask 255.255.0.0 broadcast 169.254.255.255 up
+                sleep 1
+            fi
+            type="${2:0:3}"
+            metric=`ltrx_getifinfo GETMETRIC ${2} 0`
+            naddress=`route -n | grep ${2} | head -n1 | cut -d' ' -f1`
+            route del -net ${naddress} netmask 255.255.0.0 dev ${2}
+            route add -net ${naddress} netmask 255.255.0.0 dev ${2} metric ${metric}
+            touch /tmp/autoip."$2"
+            metric=`ltrx_getifinfo GETMETRIC ${2} 1`
+            it="route add default dev ${2} metric ${metric}"
+            st=0
+            oops="`eval $it 2>&1`"
+            st=$?
+            if [ " $oops" != " " -o " $st" != " 0" ]; then
+               logger -p "user.debug" "avahi-autoipd script failed: ${2}"
+               logger -p "user.debug" "avahi-autoipd script failed: ${it}"
+               logger -p "user.debug" "avahi-autoipd script failed: ${oops}"
+            fi
+            ;;
+
+        CONFLICT|STOP|UNBIND)
+            ifconfig "$2:avahi" down
+            if [ -e /tmp/bridging.active -a $2 = $BRIDGE_WLANDEV ] ; then
+                ifconfig "${BRIDGE_ETHDEV}:avahi" down
+            fi
+            rm -f /tmp/autoip."$2"
+            ;;
+
+        *)
+            echo "Unknown event $1" >&2
+            exit 1
+            ;;
+    esac
+
+else
+
+    logger -p "user.err" "avahi-autoipd script: no network configuration tool found"
+    exit 1
+
+fi
+
+exit 0

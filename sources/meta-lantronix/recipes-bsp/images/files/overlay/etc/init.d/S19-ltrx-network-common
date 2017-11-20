@@ -1,0 +1,11 @@
+#!/bin/sh
+
+LTRX_NET_COMMON="/etc/sysconfig/network-scripts/ltrx-network-common.script"
+if [ ! -f $LTRX_NET_COMMON ]; then
+    logger -s "Missing ltrx network common script."
+    exit 1
+fi
+
+. $LTRX_NET_COMMON
+ltrx_start_network
+exit 0

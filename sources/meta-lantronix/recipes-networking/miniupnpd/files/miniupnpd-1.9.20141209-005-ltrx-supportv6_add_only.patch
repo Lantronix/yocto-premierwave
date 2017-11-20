@@ -1,0 +1,21 @@
+diff -Naur miniupnpd-1.9.20141209_orig/miniupnpd.c miniupnpd-1.9.20141209_mod/miniupnpd.c
+--- miniupnpd-1.9.20141209_orig/miniupnpd.c	2014-11-04 22:18:03.000000000 +0530
++++ miniupnpd-1.9.20141209_mod/miniupnpd.c	2015-05-08 11:05:49.397399497 +0530
+@@ -706,8 +706,16 @@
+ 		lan_addr->ifname[n] = '\0';
+ 		if(getifaddr(lan_addr->ifname, lan_addr->str, sizeof(lan_addr->str),
+ 		             &lan_addr->addr, &lan_addr->mask) < 0)
++#ifdef ENABLE_IPV6
++		{
++			fprintf(stderr, "interface \"%s\" has no IPv4 address\n", str);
++			lan_addr->str[0] = '\0';
++			lan_addr->addr.s_addr = htonl(0x00000000u);
++			lan_addr->mask.s_addr = htonl(0xffffffffu);
++                }
++#else /* ENABLE_IPV6 */
+ 			goto parselan_error;
+-		/*printf("%s => %s\n", lan_addr->ifname, lan_addr->str);*/
++#endif /* ENABLE_IPV6 */
+ 	}
+ 	else
+ 	{

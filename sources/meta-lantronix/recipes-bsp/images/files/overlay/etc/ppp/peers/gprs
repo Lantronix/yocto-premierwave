@@ -1,0 +1,15 @@
+
+/dev/ttyACM0
+
+mtu 2000
+mru 2000
+updetach #nodetach
+
+usepeerdns
+noipdefault
+0.0.0.0:0.0.0.0
+ipcp-accept-local
+ipcp-accept-remote
+
+connect '/usr/sbin/chat -f /etc/ppp/gprs-connect-chat'
+disconnect '/usr/sbin/chat -f /etc/ppp/gprs-disconnect-chat'

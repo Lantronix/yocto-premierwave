@@ -1,0 +1,13 @@
+diff --git a/http_auth_digest_module/config b/http_auth_digest_module/config
+new file mode 100644
+index 0000000..540543b
+--- /dev/null
++++ b/http_auth_digest_module/config
+@@ -0,0 +1,4 @@
++# -*- mode:sh; -*-
++ngx_addon_name=ngx_http_auth_digest_module
++HTTP_MODULES="$HTTP_MODULES ngx_http_auth_digest_module"
++NGX_ADDON_SRCS="$NGX_ADDON_SRCS src/http/modules/ngx_http_auth_digest_module.c"
+-- 
+1.9.1
+

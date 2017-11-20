@@ -1,0 +1,44 @@
+diff -Naur vsftpd-3.0.2/postlogin.c ltrx-vsftpd-3.0.2/postlogin.c
+--- vsftpd-3.0.2/postlogin.c	2012-09-18 02:59:37.000000000 -0700
++++ ltrx-vsftpd-3.0.2/postlogin.c	2015-01-23 16:33:26.282279355 -0800
+@@ -1060,7 +1060,11 @@
+   }
+   created = 1;
+   vsf_sysutil_fstat(new_file_fd, &s_p_statbuf);
+-  if (vsf_sysutil_statbuf_is_regfile(s_p_statbuf))
++  if (vsf_sysutil_statbuf_is_fifo(s_p_statbuf))
++  {
++    do_truncate = 0;
++  }
++  else if (vsf_sysutil_statbuf_is_regfile(s_p_statbuf))
+   {
+     /* Now deactive O_NONBLOCK, otherwise we have a problem on DMAPI filesystems
+      * such as XFS DMAPI.
+diff -Naur vsftpd-3.0.2/sysutil.c ltrx-vsftpd-3.0.2/sysutil.c
+--- vsftpd-3.0.2/sysutil.c	2015-01-23 16:25:48.839526617 -0800
++++ ltrx-vsftpd-3.0.2/sysutil.c	2015-01-23 16:31:23.138922936 -0800
+@@ -1321,6 +1321,13 @@
+   return S_ISDIR(p_realstat->st_mode);
+ }
+ 
++int
++vsf_sysutil_statbuf_is_fifo(const struct vsf_sysutil_statbuf* p_stat)
++{
++  const struct stat* p_realstat = (const struct stat*) p_stat;
++  return S_ISFIFO(p_realstat->st_mode);
++}
++
+ const char*
+ vsf_sysutil_statbuf_get_perms(const struct vsf_sysutil_statbuf* p_statbuf)
+ {
+diff -Naur vsftpd-3.0.2/sysutil.h ltrx-vsftpd-3.0.2/sysutil.h
+--- vsftpd-3.0.2/sysutil.h	2012-09-15 23:13:13.000000000 -0700
++++ ltrx-vsftpd-3.0.2/sysutil.h	2015-01-23 16:31:37.802370264 -0800
+@@ -118,6 +118,7 @@
+ int vsf_sysutil_statbuf_is_symlink(const struct vsf_sysutil_statbuf* p_stat);
+ int vsf_sysutil_statbuf_is_socket(const struct vsf_sysutil_statbuf* p_stat);
+ int vsf_sysutil_statbuf_is_dir(const struct vsf_sysutil_statbuf* p_stat);
++int vsf_sysutil_statbuf_is_fifo(const struct vsf_sysutil_statbuf* p_stat);
+ filesize_t vsf_sysutil_statbuf_get_size(
+   const struct vsf_sysutil_statbuf* p_stat);
+ const char* vsf_sysutil_statbuf_get_perms(

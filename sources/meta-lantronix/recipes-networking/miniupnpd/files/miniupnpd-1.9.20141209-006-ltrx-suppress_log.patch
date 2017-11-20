@@ -1,0 +1,74 @@
+diff -Naur miniupnpd-1.9.20141209_orig/minissdp.c miniupnpd-1.9.20141209_mod/minissdp.c
+--- miniupnpd-1.9.20141209_orig/minissdp.c	2014-10-22 17:24:45.000000000 +0530
++++ miniupnpd-1.9.20141209_mod/minissdp.c	2015-05-07 10:42:19.399494882 +0530
+@@ -796,8 +796,8 @@
+ 	lan_addr = get_lan_for_peer(sender);
+ 	if(lan_addr == NULL)
+ 	{
+-		syslog(LOG_WARNING, "SSDP packet sender %s not from a LAN, ignoring",
+-		       sender_str);
++		/*syslog(LOG_WARNING, "SSDP packet sender %s not from a LAN, ignoring",
++		       sender_str);*/
+ 		return;
+ 	}
+ 
+@@ -876,7 +876,7 @@
+ 	           sender_str );*/
+ 		if(st && (st_len > 0))
+ 		{
+-			syslog(LOG_INFO, "SSDP M-SEARCH from %s ST: %.*s",
++			syslog(LOG_DEBUG, "SSDP M-SEARCH from %s ST: %.*s",
+ 			       sender_str, st_len, st);
+ 			/* find in which sub network the client is */
+ 			if(sender->sa_family == AF_INET)
+@@ -958,7 +958,7 @@
+ 					else
+ 						snprintf(ver_str, sizeof(ver_str), "%d", known_service_types[i].version);
+ #endif
+-					syslog(LOG_INFO, "Single search found");
++					syslog(LOG_DEBUG, "Single search found");
+ #ifdef DELAY_MSEARCH_RESPONSE
+ 					delay = random() / (1 + RAND_MAX / (1000 * mx_value));
+ #ifdef DEBUG
+diff -Naur miniupnpd-1.9.20141209_orig/miniupnpd.c miniupnpd-1.9.20141209_mod/miniupnpd.c
+--- miniupnpd-1.9.20141209_orig/miniupnpd.c	2015-05-07 11:47:15.415401912 +0530
++++ miniupnpd-1.9.20141209_mod/miniupnpd.c	2015-05-07 11:47:55.111400965 +0530
+@@ -263,7 +263,7 @@
+ 		char addr_str[64];
+ 
+ 		sockaddr_to_string((struct sockaddr *)&clientname, addr_str, sizeof(addr_str));
+-		syslog(LOG_INFO, "%s connection from %s", protocol, addr_str);
++		syslog(LOG_DEBUG, "%s connection from %s", protocol, addr_str);
+ 		if(get_lan_for_peer((struct sockaddr *)&clientname) == NULL)
+ 		{
+ 			/* The peer is not a LAN ! */
+@@ -1699,7 +1699,7 @@
+ #endif /* ENABLE_HTTPS */
+ #ifdef ENABLE_IPV6
+ 		if(find_ipv6_addr(ext_if_name, ipv6_addr_for_http_with_brackets, sizeof(ipv6_addr_for_http_with_brackets)) > 0) {
+-			syslog(LOG_NOTICE, "HTTP IPv6 address given to control points : %s",
++			syslog(LOG_DEBUG, "HTTP IPv6 address given to control points : %s",
+ 			       ipv6_addr_for_http_with_brackets);
+ 		} else {
+ 			memcpy(ipv6_addr_for_http_with_brackets, "[::1]", 6);
+@@ -2222,7 +2222,7 @@
+ #ifdef ENABLE_IPV6
+ 		if(sudpv6 >= 0 && FD_ISSET(sudpv6, &readset))
+ 		{
+-			syslog(LOG_INFO, "Received UDP Packet (IPv6)");
++			/*syslog(LOG_INFO, "Received UDP Packet (IPv6)");*/
+ #ifdef ENABLE_HTTPS
+ 			ProcessSSDPRequest(sudpv6, (unsigned short)v.port, (unsigned short)v.https_port);
+ #else
+diff -Naur miniupnpd-1.9.20141209_orig/upnphttp.c miniupnpd-1.9.20141209_mod/upnphttp.c
+--- miniupnpd-1.9.20141209_orig/upnphttp.c	2014-12-09 15:26:15.000000000 +0530
++++ miniupnpd-1.9.20141209_mod/upnphttp.c	2015-05-07 10:39:52.563498386 +0530
+@@ -743,7 +743,7 @@
+ 	for(i = 0; i<15 && *p != '\r'; i++)
+ 		HttpVer[i] = *(p++);
+ 	HttpVer[i] = '\0';
+-	syslog(LOG_INFO, "HTTP REQUEST : %s %s (%s)",
++	syslog(LOG_DEBUG, "HTTP REQUEST : %s %s (%s)",
+ 	       HttpCommand, HttpUrl, HttpVer);
+ 	ParseHttpHeaders(h);
+ 	if(strcmp("POST", HttpCommand) == 0)

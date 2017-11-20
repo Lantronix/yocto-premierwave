@@ -1,0 +1,16 @@
+#!/bin/sh
+
+if [ ! -x /usr/sbin/mke2fs ] ; then
+   logger "Error: missing mke2fs command."
+   exit 1
+fi
+
+mke2fs -N 512 -q /dev/ram0 2048 > /dev/null 2>&1
+mount -n -t ext2 -o defaults,nocheck /dev/ram0 /mnt
+# Copy contents of /etc across
+cp -a /etc/* /mnt
+cp -a /etc/.??* /mnt > /dev/null 2>&1
+# Mount over original /etc/
+umount -n /mnt
+mount -n -t ext2 -o defaults,nocheck /dev/ram0 /etc
+

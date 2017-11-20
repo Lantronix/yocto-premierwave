@@ -1,0 +1,271 @@
+#!/bin/sh
+
+logmsg() {
+    echo $1
+    logger $1
+}
+if [ "$#" -lt 1 ] ; then
+        echo "Invalid arguments."
+        exit 1
+fi
+
+IFCNAME=$1
+CLIENT_MAC=$2
+CLIENT_MAC_PREFIX="0x3d:01"
+
+WLAN_MAC_FILE="/tmp/wlanmacaddress"
+ETH_IP_FILE="/tmp/ethipaddress"
+
+
+IFCBASE=/etc/sysconfig/network-scripts
+IFCNETWORKING=/etc/sysconfig/network_$IFCNAME
+IFCFILE=$IFCBASE/ifcfg-$IFCNAME
+IFCETHTOOLFILE=$IFCBASE/ethtool-$IFCNAME
+LTRX_NET_COMMON="/etc/sysconfig/network-scripts/ltrx-network-common.script"
+
+if [ ! -f $IFCFILE ]; then
+    logmsg "Interface configuration file for $IFCNAME does not exist."
+        exit 2
+fi
+
+if [ -n "$CLIENT_MAC" ] ; then
+    DHCP_CLIENTID=${CLIENT_MAC}
+    /bin/rm $WLAN_MAC_FILE
+    echo "WLAN_MAC=$CLIENT_MAC" > $WLAN_MAC_FILE
+    /bin/chmod 777 $WLAN_MAC_FILE
+fi
+. $IFCFILE
+
+if [ -n "$DHCP_CLIENTID" ] ; then
+    #check if dhcp client id is ascii
+    chars=${#DHCP_CLIENTID}
+    hexChars=`expr "$DHCP_CLIENTID" : "[0-9a-fA-F]\{$chars\}"`
+    if [ "$chars" != "$hexChars" ] ; then
+        #convert to hex
+        HEXVAL=$(echo -n "$DHCP_CLIENTID" | od -A n -t x1 | tr -d ' ')
+        DHCP_CLIENTID=$HEXVAL
+    fi
+fi
+if [ "$ONBOOT" != "yes" ] ; then
+    logmsg "Interface $IFCNAME is disabled."
+        exit 0
+fi
+
+if [ "$TYPE" = "Ethernet" ] ; then
+    if [ ! -f $IFCETHTOOLFILE ]; then
+        logmsg "Interface ethtool option file for $IFCNAME does not exist."
+        exit 2
+    fi
+
+    . $IFCETHTOOLFILE
+
+    if [ "$ETHTOOL_OPTS" != "" ] ; then
+        ethtool -s $IFCNAME $ETHTOOL_OPTS
+    fi
+fi
+
+if [ -f $IFCNETWORKING ]; then
+	#enable networking for interface
+	echo "NETWORKING=yes" > $IFCNETWORKING.tmp
+	cat $IFCNETWORKING | grep -v -e"NETWORKING[[:space:]]*=" >> $IFCNETWORKING.tmp
+	mv $IFCNETWORKING.tmp $IFCNETWORKING
+fi
+DHCP_PID_FILE=/var/run/udhcpc.$IFCNAME.pid
+if [ -f $DHCP_PID_FILE ] ; then
+    kill `cat /var/run/udhcpc.$IFCNAME.pid` 2>/dev/null
+    rm -f $DHCP_PID_FILE
+fi
+DHCP6_PID_FILE=/var/run/dhcp6.$IFCNAME.pid
+if [ -f $DHCP6_PID_FILE ] ; then
+    kill `cat /var/run/dhcp6.$IFCNAME.pid` 2>/dev/null
+    rm -f $DHCP6_PID_FILE
+fi
+
+# Interface eth0 in bridging mode will only be used to
+# talk to a SINGLE bridged host.
+if [ -e /tmp/bridging.active -a $IFCNAME = "eth0" ] ; then
+    if [ "$IPV4" = "yes" ] ; then
+        for addr in $(ip -4 addr show dev $IFCNAME | grep inet | awk '{print $2}'); do
+            ip -4 addr del $addr dev $IFCNAME
+        done
+        for addr in $(ip -4 addr show dev wlan0 | grep inet | awk '{print $2}' | awk -F'/' '{print $1}'); do
+            ip -4 addr add $addr/32 dev $IFCNAME
+        done
+        if [ -e /tmp/bripaddress ] ; then
+            . /tmp/bripaddress
+            ip route add $BRCLIENT_IP dev eth0
+        fi
+    fi
+    if [ "$IPV6" = "yes" ] ; then
+        #sync all the global IPv6 addresses with wlan0
+        for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
+            ip -6 addr del $addr dev $IFCNAME scope global
+        done
+        for addr in $(ip -6 addr show dev wlan0 scope global | grep inet6 | awk '{print $2}'); do
+            ip -6 addr add $addr dev $IFCNAME scope global
+        done
+        if [ -e /tmp/bripv6address ] ; then
+            . /tmp/bripv6address
+            ip route add $BRCLIENT_IPV6 dev eth0
+        fi
+    fi
+    exit 0
+fi
+if [ "$IPV4" = "yes" ] ; then
+if [ "$BOOTPROTO" = "static" ] ; then
+	if [ -n "$IPADDR" ] && [ "$IPADDR" != "0.0.0.0" ] ; then
+        metric=`ltrx_getifinfo GETMETRIC ${IFCNAME} 0`
+        ifconfig $IFCNAME $IPADDR netmask $NETMASK up
+        #handle newline in routes
+        IFS=$'\n'
+        routes=`route -n | grep ${IFCNAME}`
+        for route in ${routes}
+        do
+			naddress=`echo ${route} | awk -F' ' '{print $1}'`
+			nmetric=`echo ${route} | awk -F' ' '{print $5}'`
+			#skip the default route and static routes if any
+			if [ "$naddress" != "0.0.0.0" -a $nmetric -lt 100 ] ; then
+        route del -net ${naddress} netmask ${NETMASK} dev ${IFCNAME}
+        route add -net ${naddress} netmask ${NETMASK} dev ${IFCNAME} metric ${metric}
+        	fi
+        done
+        unset IFS
+		arping -I $IFCNAME -U $IPADDR -c1
+		if [ ! -f $LTRX_NET_COMMON ]; then
+                logmsg "Missing ltrx network common script."
+            exit 1
+        fi
+        . $LTRX_NET_COMMON
+        ltrx_start_network $IFCNAME
+	else
+	        /sbin/start_autoipd $IFCNAME 0 &
+	fi
+	if [ -e /tmp/bridging.active -a $IFCNAME = "wlan0" ] ; then
+            /bin/rm $ETH_IP_FILE
+            # Set a route to the printer via eth0:
+            echo "ETH_IP=$IPADDR" > $ETH_IP_FILE
+            /bin/chmod 777 $ETH_IP_FILE
+            /sbin/ip addr add $IPADDR dev eth0
+            sleep 1
+            if [ -e /tmp/bripaddress ] ; then
+                . /tmp/bripaddress
+                ip route add $BRCLIENT_IP dev eth0
+            fi
+	fi
+elif [ "$BOOTPROTO" = "dhcp" ] || [ "$BOOTPROTO" = "bootp" ] ; then
+        if [ ! -x /sbin/udhcpc ] ; then
+            logmsg "DHCP client udhcpc not found."
+                exit 3
+        fi
+        if [ -n "$DHCP_CLIENTID" ] ; then
+        	if [ -n "$HOSTNAME" ] ; then
+                udhcpc --interface=${IFCNAME} -F "$HOSTNAME" \
+                  -x hostname:"$HOSTNAME" -x "${CLIENT_MAC_PREFIX}$DHCP_CLIENTID" -R -t 5 -A 10 -S \
+                -s /usr/share/udhcpc/ltrx-dhcp.script \
+                -p /var/run/udhcpc.$IFCNAME.pid -i $IFCNAME &
+	        else
+                udhcpc --interface=${IFCNAME} -F "$HOSTNAME" \
+                  -x hostname:"$HOSTNAME" -x "${CLIENT_MAC_PREFIX}$DHCP_CLIENTID" -R -t 5 -A 10 -S \
+                -s /usr/share/udhcpc/ltrx-dhcp.script \
+                -p /var/run/udhcpc.$IFCNAME.pid -i $IFCNAME &
+		fi
+	else
+                if [ -n "$HOSTNAME" ] ; then
+                udhcpc --interface=${IFCNAME} -F "$HOSTNAME" \
+                  -x hostname:"$HOSTNAME" -R -t 5 -A 10 -S \
+                -s /usr/share/udhcpc/ltrx-dhcp.script \
+                -p /var/run/udhcpc.$IFCNAME.pid -i $IFCNAME &
+                else
+            udhcpc --interface=${IFCNAME} -R -t 5 -A 10 -S \
+                -s /usr/share/udhcpc/ltrx-dhcp.script \
+                -p /var/run/udhcpc.$IFCNAME.pid -i $IFCNAME &
+                fi
+        fi
+        /sbin/start_autoipd $IFCNAME 6 &
+else
+        logmsg "Invalid boot protocol $BOOTPROTO"
+        exit 4
+    fi
+else
+    logmsg "${IFCNAME}: IPv4 is disabled."
+    ifconfig $IFCNAME 0.0.0.0
+fi
+
+if [ "$IPV6" = "yes" ] ; then
+    echo 1 > /proc/sys/net/ipv6/conf/$IFCNAME/autoconf
+
+    #get wlan0 real MAC from eth0 mac+1
+    ETHERNET_MAC=`ifconfig eth0 | grep HWaddr | awk '{print tolower($5)}'`
+    WLAN_MAC1=`echo $ETHERNET_MAC | awk -F':' '{print $1}'`
+    WLAN_MAC2=`echo $ETHERNET_MAC | awk -F':' '{print $2}'`
+    WLAN_MAC3=`echo $ETHERNET_MAC | awk -F':' '{print $3}'`
+    WLAN_MAC4=`echo $ETHERNET_MAC | awk -F':' '{print $4}'`
+    WLAN_MAC5=`echo $ETHERNET_MAC | awk -F':' '{print $5}'`
+    ETHERNET_MAC6=`echo $ETHERNET_MAC | awk -F':' '{print $6}'`
+    ETHERNET_MAC6="0x"$ETHERNET_MAC6
+    ETHERNET_MAC6=`printf "%d" $ETHERNET_MAC6`
+    WLAN_MAC6=`printf "%02x" $((ETHERNET_MAC6 + 1))`
+
+    if [ -e /tmp/bridging.active -a "$IFCNAME" = "wlan0" ] ; then
+
+        #IPv6 stateless address autoconfiguration based on interface MAC (calculated)
+        ip token set ::$WLAN_MAC1$WLAN_MAC2:$WLAN_MAC3$WLAN_MAC4:$WLAN_MAC5$WLAN_MAC6 dev $IFCNAME
+
+        OLD_LINKLOCAL_ADDRESS=`ip -6 addr show dev $IFCNAME scope link | grep inet6 | awk '{print $2}'`
+        if [ -n "$OLD_LINKLOCAL_ADDRESS" ] ; then
+            LINKLOCAL_MASK=`ip -6 addr show dev $IFCNAME scope link | grep inet6 | awk -F'/' '{print $2}' | awk '{print $1}'`
+            #replace the link local address with one derived from eth0 mac+1, invert bit 7 of MAC1
+            WLAN_MAC1=$(( $WLAN_MAC1 ^ 2 ))
+            LINKLOCAL_ADDRESS_PRE=$WLAN_MAC1$WLAN_MAC2:$WLAN_MAC3
+            LINKLOCAL_ADDRESS_MID="ff:fe"
+            LINKLOCAL_ADDRESS_POST=$WLAN_MAC4:$WLAN_MAC5$WLAN_MAC6/$LINKLOCAL_MASK
+            LINKLOCAL_ADDRESS=fe80::$LINKLOCAL_ADDRESS_PRE$LINKLOCAL_ADDRESS_MID$LINKLOCAL_ADDRESS_POST
+            #for addr in $(ip -6 addr show dev $IFCNAME scope link | grep inet6 | awk '{print $2}'); do
+            #    ip -6 addr del $addr dev $IFCNAME scope link
+            #done
+            ip -6 addr add $LINKLOCAL_ADDRESS dev $IFCNAME scope link
+            #restart avahi-daemon, our IP address has changed
+            #/etc/init.d/S50avahi-daemon stop
+            #/etc/init.d/S50avahi-daemon start
+        else
+            logger "ifstart: no link local address for $IFCNAME"
+        fi
+    fi
+    if [ "$BOOTPROTO6" = "static" ] ; then
+        if [ -n "$IPV6ADDR" ] && [ "$IPV6ADDR" != "" ] ; then
+            for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
+                ip -6 addr del $addr dev $IFCNAME scope global
+            done
+            ip -6 addr add $IPV6ADDR dev $IFCNAME scope global
+            if [ -e /tmp/bripv6address ] ; then
+                . /tmp/bripv6address
+                ip route add $BRCLIENT_IPV6 dev eth0
+            fi
+        fi
+    elif [ "$BOOTPROTO6" = "dhcp" ] || [ "$BOOTPROTO6" = "bootp" ] ; then
+        for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
+            ip -6 addr del $addr dev $IFCNAME scope global
+        done
+        if [ -e /tmp/bridging.active -a "$IFCNAME" = "wlan0" ] ; then
+            ebtables -t broute -A BROUTING -i wlan0 --proto ipv6 --ip6-protocol udp --ip6-source-port 546:547 --ip6-destination-port 546:547 -j DROP
+        fi
+        dhcp6c -c /etc/wide-dhcpv6/client_$IFCNAME.conf -p /var/run/dhcp6.$IFCNAME.pid $IFCNAME &
+    else
+        logmsg "Invalid IPv6 boot protocol $BOOTPROTO6"
+        exit 4
+    fi
+    #run network script to update resolv.conf and routes etc.
+    . $LTRX_NET_COMMON
+    ltrx_start_network $IFCNAME
+else
+    logmsg "${IFCNAME}: IPv6 is disabled."
+    echo 1 > /proc/sys/net/ipv6/conf/$IFCNAME/disable_ipv6
+    for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
+        ip -6 addr del $addr dev $IFCNAME scope global
+    done
+    for addr in $(ip -6 addr show dev $IFCNAME scope link | grep inet6 | awk '{print $2}'); do
+        ip -6 addr del $addr dev $IFCNAME scope link
+    done
+fi
+
+exit 0

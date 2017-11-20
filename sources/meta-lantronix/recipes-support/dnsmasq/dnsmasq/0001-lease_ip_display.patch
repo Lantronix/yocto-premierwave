@@ -1,0 +1,33 @@
+--- dnsmasq-2.70_old/src/dnsmasq.h	2016-06-28 13:29:13.943746680 +0530
++++ dnsmasq-2.70/src/dnsmasq.h	2016-06-28 12:26:43.423685996 +0530
+@@ -649,6 +649,7 @@
+     struct slaac_address *next;
+   } *slaac_address;
+   int vendorclass_count;
++  char ltrx_ipv6_buf[INET6_ADDRSTRLEN];
+ #endif
+   struct dhcp_lease *next;
+ };
+--- dnsmasq-2.70_old/src/lease.c	2016-06-28 13:29:13.963746678 +0530
++++ dnsmasq-2.70/src/lease.c	2016-06-28 12:34:59.271694016 +0530
+@@ -283,7 +283,8 @@
+ 	      inet_ntop(AF_INET6, &lease->addr6, daemon->addrbuff, ADDRSTRLEN);
+ 	 
+ 	      ourprintf(&err, "%s%u %s ", (lease->flags & LEASE_TA) ? "T" : "",
+-			lease->iaid, daemon->addrbuff);
++			//lease->iaid, daemon->addrbuff);
++			lease->iaid, lease->ltrx_ipv6_buf);
+ 	      ourprintf(&err, "%s ", lease->hostname ? lease->hostname : "*");
+ 	      
+ 	      if (lease->clid && lease->clid_len != 0)
+@@ -735,6 +736,10 @@
+   if (lease)
+     {
+       lease->addr6 = *addrp;
++#if 1  //LTRX
++      inet_ntop(AF_INET6, addrp, daemon->dhcp_buff2, 255);
++      strncpy(lease->ltrx_ipv6_buf, daemon->dhcp_buff2, sizeof(lease->ltrx_ipv6_buf));
++#endif
+       lease->flags |= lease_type;
+       lease->iaid = 0;
+     }

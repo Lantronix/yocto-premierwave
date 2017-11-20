@@ -1,0 +1,181 @@
+--- busybox-1.22.1/sysklogd/syslogd.c	2016-10-27 11:06:37.068005893 -0700
++++ busybox-1.22.1-syslog_counters/sysklogd/syslogd.c	2016-10-27 11:08:05.670031499 -0700
+@@ -186,7 +186,7 @@
+ 
+ static const struct init_globals init_data = {
+ 	.logFile = {
+-		.path = DEFAULT_LOG_FILE_PATH,  /* LTRX: used define instead of string constant */ 
++		.path = DEFAULT_LOG_FILE_PATH,  /* LTRX: used define instead of string constant */
+ 		.fd = -1,
+ 	},
+ #ifdef SYSLOGD_MARK
+@@ -243,6 +243,17 @@
+ 	OPT_kmsg        = IF_FEATURE_KMSG_SYSLOG(   (1 << OPTBIT_kmsg       )) + 0,
+ 
+ };
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/types.h>
++#include <sys/ipc.h>
++#include <sys/shm.h>
++#define SHM_SIZE 1024  /* make it a 1K shared memory segment */
++static uint32_t remote_send_success;
++static uint32_t remote_send_failed;
++
+ #define OPTION_STR "m:nO:l:S" \
+ 	IF_FEATURE_ROTATE_LOGFILE("s:" ) \
+ 	IF_FEATURE_ROTATE_LOGFILE("b:" ) \
+@@ -589,7 +600,7 @@
+ #endif
+ 	int len = strlen(msg);
+ 
+-	if (log_file->fd >= 0) {
++    if (log_file->fd >= 0) {
+ 		/* Reopen log file every second. This allows admin
+ 		 * to delete the file and not worry about restarting us.
+ 		 * This costs almost nothing since it happens
+@@ -765,7 +776,7 @@
+                    if (! strcmp(G.logFile.path, DEFAULT_LOG_FILE_PATH))
+                    {
+                        return;
+-                   } 
++                   }
+ 		}
+ #endif
+ 		log_locally(now, G.printbuf, &G.logFile);
+@@ -897,6 +908,22 @@
+ 	llist_t *item;
+         int pri = (LOG_USER | LOG_NOTICE);
+ #endif
++	key_t key;
++	int shmid;
++	int mode;
++	char * shm_data=NULL;
++	if ((key = ftok("/sbin/syslogd", 'R')) != -1) {
++		if ((shmid = shmget(key, SHM_SIZE, 0644 | IPC_CREAT)) != -1) {
++			shm_data = shmat(shmid, (void *)0, 0);
++			if (shm_data == (char *)(-1)) {
++				shm_data = NULL;
++			}
++		}
++	}
++	if(shm_data!=NULL)
++	{
++		snprintf(shm_data, SHM_SIZE, "%d:%d", 0, 0);/*initialize*/
++	}
+ #if ENABLE_FEATURE_SYSLOGD_DUP
+ 	int last_sz = -1;
+ 	char *last_buf;
+@@ -978,50 +1005,61 @@
+ 				if (rh->remoteFD == -1)
+ 					continue;
+ 			}
+-                        // LTRX: check severity code with configured log level
+-                        {
+-                          char *endbuf = recvbuf + sz;
+-                          char *p = recvbuf;
+-  
+-                          while (p < endbuf) 
+-                            {
+-                              if (*p == '<') {
+-                                /* Parse the magic priority number */
+-                                pri = bb_strtou(p + 1, &p, 10);
+-                                if (*p == '>')
+-                                  p++;
+-                                if (pri & ~(LOG_FACMASK | LOG_PRIMASK))
+-                                  pri = (LOG_USER | LOG_NOTICE);
+-                                break;
+-                              }
+-                              else
+-                                p++;
+-                            }
+-                        }
++            // LTRX: check severity code with configured log level
++            {
++              char *endbuf = recvbuf + sz;
++              char *p = recvbuf;
++
++              while (p < endbuf)
++                {
++                  if (*p == '<') {
++                    /* Parse the magic priority number */
++                    pri = bb_strtou(p + 1, &p, 10);
++                    if (*p == '>')
++                      p++;
++                    if (pri & ~(LOG_FACMASK | LOG_PRIMASK))
++                      pri = (LOG_USER | LOG_NOTICE);
++                    break;
++                  }
++                  else
++                    p++;
++                }
++            }
+ 			/* Send message to remote logger.
+ 			 * On some errors, close and set remoteFD to -1
+ 			 * so that DNS resolution is retried.
+ 			 */
+-                        if (LOG_PRI(pri) < G.logLevel)
+-                        {
++            if (LOG_PRI(pri) < G.logLevel)
++            {
+ 
+-                            if (sendto(rh->remoteFD, recvbuf, sz+1,
+-                                MSG_DONTWAIT | MSG_NOSIGNAL,
+-                                &(rh->remoteAddr->u.sa), rh->remoteAddr->len) == -1
+-                            ) {
+-                                switch (errno) {
+- 
+-                                    case ECONNRESET:
+-                                    case ENOTCONN: /* paranoia */
+-                                    case EPIPE:
+-                                    close(rh->remoteFD);
+-                                    rh->remoteFD = -1;
+-                                      free(rh->remoteAddr);
+-                                    rh->remoteAddr = NULL;
+-                                }
+-              		    }
+-                        }
+-		}
++                if (sendto(rh->remoteFD, recvbuf, sz+1,
++                    MSG_DONTWAIT | MSG_NOSIGNAL,
++                    &(rh->remoteAddr->u.sa), rh->remoteAddr->len) == -1
++                )
++		        {
++          		    //failed
++		            remote_send_failed++;
++		            switch (errno) {
++
++                                case ECONNRESET:
++                                case ENOTCONN: /* paranoia */
++                                case EPIPE:
++                                close(rh->remoteFD);
++                                rh->remoteFD = -1;
++                                  free(rh->remoteAddr);
++                                rh->remoteAddr = NULL;
++                            }
++		        }
++		        else
++		        {
++			        //success
++			        remote_send_success++;
++		        }
++		        if (shm_data != NULL) {
++			        snprintf(shm_data, SHM_SIZE, "%d:%d", remote_send_success, remote_send_failed);
++		        }
++            }
++	    }
+ #endif
+ 		if (!ENABLE_FEATURE_REMOTE_LOG || (option_mask32 & OPT_locallog)) {
+ 			recvbuf[sz] = '\0'; /* ensure it *is* NUL terminated */
+@@ -1031,6 +1069,9 @@
+ 
+ 	timestamp_and_log_internal("syslogd exiting");
+ 	puts("syslogd exiting");
++	if (shmdt(shm_data) == -1) {
++
++    }
+ 	remove_pidfile(CONFIG_PID_FILE_PATH "/syslogd.pid");
+ 	ipcsyslog_cleanup();
+ 	if (option_mask32 & OPT_kmsg)

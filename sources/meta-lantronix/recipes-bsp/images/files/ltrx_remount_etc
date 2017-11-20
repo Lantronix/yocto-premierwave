@@ -1,0 +1,16 @@
+#!/bin/bash
+
+if [ ! -x /usr/sbin/mke2fs ] ; then
+   logger "Error: missing mke2fs command."
+   exit 1
+fi
+
+MOUNTPOINT=`mktemp -d`
+trap "rm -rf $MOUNTPOINT" EXIT
+
+mount -n -t tmpfs tmpfs $MOUNTPOINT
+# Copy contents of /etc across
+cp -a /etc/. $MOUNTPOINT
+# Mount over original /etc/
+mount --move $MOUNTPOINT /etc
+

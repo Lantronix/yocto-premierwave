@@ -1,0 +1,13 @@
+diff -Naur dropbear-2014.63/dbrandom.c ltrx-dropbear-2014.63/dbrandom.c
+--- dropbear-2014.63/dbrandom.c	2014-02-19 06:05:24.000000000 -0800
++++ ltrx-dropbear-2014.63/dbrandom.c	2016-07-18 14:00:19.220348464 -0700
+@@ -205,7 +205,9 @@
+ #ifdef __linux__
+ 	/* Seems to be a reasonable source of entropy from timers. Possibly hard
+ 	 * for even local attackers to reproduce */
++	/* LTRX - This file gets ridiculously large
+ 	process_file(&hs, "/proc/timer_list", 0, 0);
++	*/
+ 	/* Might help on systems with wireless */
+ 	process_file(&hs, "/proc/interrupts", 0, 0);
+ 

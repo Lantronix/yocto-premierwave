@@ -1,0 +1,963 @@
+*** wide-dhcpv6-20080615/common.h	2015-06-19 13:42:47.167259433 -0700
+--- wide-dhcpv6-20080615-ltrx/common.h	2015-06-19 13:40:07.383268369 -0700
+***************
+*** 2,8 ****
+  /*
+   * Copyright (C) 1998 and 1999 WIDE Project.
+   * All rights reserved.
+!  * 
+   * Redistribution and use in source and binary forms, with or without
+   * modification, are permitted provided that the following conditions
+   * are met:
+--- 2,8 ----
+  /*
+   * Copyright (C) 1998 and 1999 WIDE Project.
+   * All rights reserved.
+!  *
+   * Redistribution and use in source and binary forms, with or without
+   * modification, are permitted provided that the following conditions
+   * are met:
+***************
+*** 14,20 ****
+   * 3. Neither the name of the project nor the names of its contributors
+   *    may be used to endorse or promote products derived from this software
+   *    without specific prior written permission.
+!  * 
+   * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+   * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+--- 14,20 ----
+   * 3. Neither the name of the project nor the names of its contributors
+   *    may be used to endorse or promote products derived from this software
+   *    without specific prior written permission.
+!  *
+   * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+   * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+***************
+*** 156,162 ****
+  extern int in6_scope __P((struct in6_addr *));
+  extern void setloglevel __P((int));
+  extern void debug_printf __P((int, const char *, const char *, ...));
+! extern int get_duid __P((char *, struct duid *));
+  extern void dhcp6_init_options __P((struct dhcp6_optinfo *));
+  extern void dhcp6_clear_options __P((struct dhcp6_optinfo *));
+  extern int dhcp6_copy_options __P((struct dhcp6_optinfo *,
+--- 156,162 ----
+  extern int in6_scope __P((struct in6_addr *));
+  extern void setloglevel __P((int));
+  extern void debug_printf __P((int, const char *, const char *, ...));
+! extern int get_duid __P((char *, char*, struct duid *));
+  extern void dhcp6_init_options __P((struct dhcp6_optinfo *));
+  extern void dhcp6_clear_options __P((struct dhcp6_optinfo *));
+  extern int dhcp6_copy_options __P((struct dhcp6_optinfo *,
+*** wide-dhcpv6-20080615/common.c	2015-06-19 13:42:47.211259430 -0700
+--- wide-dhcpv6-20080615-ltrx/common.c	2015-06-19 14:34:55.415084460 -0700
+***************
+*** 2,8 ****
+  /*
+   * Copyright (C) 1998 and 1999 WIDE Project.
+   * All rights reserved.
+!  * 
+   * Redistribution and use in source and binary forms, with or without
+   * modification, are permitted provided that the following conditions
+   * are met:
+--- 2,8 ----
+  /*
+   * Copyright (C) 1998 and 1999 WIDE Project.
+   * All rights reserved.
+!  *
+   * Redistribution and use in source and binary forms, with or without
+   * modification, are permitted provided that the following conditions
+   * are met:
+***************
+*** 14,20 ****
+   * 3. Neither the name of the project nor the names of its contributors
+   *    may be used to endorse or promote products derived from this software
+   *    without specific prior written permission.
+!  * 
+   * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+   * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+--- 14,20 ----
+   * 3. Neither the name of the project nor the names of its contributors
+   *    may be used to endorse or promote products derived from this software
+   *    without specific prior written permission.
+!  *
+   * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+   * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+***************
+*** 744,750 ****
+  		memcpy(addr, &sin6.sin6_addr, sizeof(sin6.sin6_addr));
+  #ifdef __KAME__
+  		if (IN6_IS_ADDR_LINKLOCAL(addr))
+! 			addr->s6_addr[2] = addr->s6_addr[3] = 0; 
+  #endif
+  		error = 0;
+  		break;
+--- 744,750 ----
+  		memcpy(addr, &sin6.sin6_addr, sizeof(sin6.sin6_addr));
+  #ifdef __KAME__
+  		if (IN6_IS_ADDR_LINKLOCAL(addr))
+! 			addr->s6_addr[2] = addr->s6_addr[3] = 0;
+  #endif
+  		error = 0;
+  		break;
+***************
+*** 799,805 ****
+  	struct in6_addr *addr;
+  	char *ifnam;
+  {
+! 	u_int ifindex; 
+  
+  	if ((ifindex = if_nametoindex(ifnam)) == 0)
+  		return (-1);
+--- 799,805 ----
+  	struct in6_addr *addr;
+  	char *ifnam;
+  {
+! 	u_int ifindex;
+  
+  	if ((ifindex = if_nametoindex(ifnam)) == 0)
+  		return (-1);
+***************
+*** 989,1001 ****
+  }
+  
+  int
+! get_duid(idfile, duid)
+  	char *idfile;
+  	struct duid *duid;
+  {
+  	FILE *fp = NULL;
+  	u_int16_t len = 0, hwtype;
+! 	struct dhcp6opt_duid_type1 *dp; /* we only support the type1 DUID */
+  	char tmpbuf[256];	/* DUID should be no more than 256 bytes */
+  
+  	if ((fp = fopen(idfile, "r")) == NULL && errno != ENOENT)
+--- 989,1002 ----
+  }
+  
+  int
+! get_duid(idfile, ifname, duid)
+  	char *idfile;
++ 	char* ifname;
+  	struct duid *duid;
+  {
+  	FILE *fp = NULL;
+  	u_int16_t len = 0, hwtype;
+! 	struct dhcp6opt_duid_type3 *dp; /* we only support the type1 DUID */
+  	char tmpbuf[256];	/* DUID should be no more than 256 bytes */
+  
+  	if ((fp = fopen(idfile, "r")) == NULL && errno != ENOENT)
+***************
+*** 1011,1022 ****
+  	} else {
+  		int l;
+  
+! 		if ((l = gethwid(tmpbuf, sizeof(tmpbuf), NULL, &hwtype)) < 0) {
+  			debug_printf(LOG_INFO, FNAME,
+  			    "failed to get a hardware address");
+  			goto fail;
+  		}
+! 		len = l + sizeof(struct dhcp6opt_duid_type1);
+  	}
+  
+  	memset(duid, 0, sizeof(*duid));
+--- 1012,1023 ----
+  	} else {
+  		int l;
+  
+! 		if ((l = gethwid(tmpbuf, sizeof(tmpbuf), ifname, &hwtype)) < 0) {
+  			debug_printf(LOG_INFO, FNAME,
+  			    "failed to get a hardware address");
+  			goto fail;
+  		}
+! 		len = l + sizeof(struct dhcp6opt_duid_type3);
+  	}
+  
+  	memset(duid, 0, sizeof(*duid));
+***************
+*** 1039,1050 ****
+  	} else {
+  		u_int64_t t64;
+  
+! 		dp = (struct dhcp6opt_duid_type1 *)duid->duid_id;
+! 		dp->dh6_duid1_type = htons(1); /* type 1 */
+  		dp->dh6_duid1_hwtype = htons(hwtype);
+- 		/* time is Jan 1, 2000 (UTC), modulo 2^32 */
+- 		t64 = (u_int64_t)(time(NULL) - 946684800);
+- 		dp->dh6_duid1_time = htonl((u_long)(t64 & 0xffffffff));
+  		memcpy((void *)(dp + 1), tmpbuf, (len - sizeof(*dp)));
+  
+  		debug_printf(LOG_DEBUG, FNAME, "generated a new DUID: %s",
+--- 1040,1048 ----
+  	} else {
+  		u_int64_t t64;
+  
+! 		dp = (struct dhcp6opt_duid_type3 *)duid->duid_id;
+! 		dp->dh6_duid1_type = htons(3); /* type 3 */
+  		dp->dh6_duid1_hwtype = htons(hwtype);
+  		memcpy((void *)(dp + 1), tmpbuf, (len - sizeof(*dp)));
+  
+  		debug_printf(LOG_DEBUG, FNAME, "generated a new DUID: %s",
+***************
+*** 1217,1228 ****
+  #endif
+  
+  static ssize_t
+! gethwid(buf, len, ifname, hwtypep)
+  	char *buf;
+  	int len;
+! 	const char *ifname;
+  	u_int16_t *hwtypep;
+  {
+  	struct ifaddrs *ifa, *ifap;
+  #ifdef __KAME__
+  	struct sockaddr_dl *sdl;
+--- 1215,1233 ----
+  #endif
+  
+  static ssize_t
+! gethwid(buf, len, ifname_in, hwtypep)
+  	char *buf;
+  	int len;
+! 	const char *ifname_in;
+  	u_int16_t *hwtypep;
+  {
++ 	char ifname[32];
++ 	strncpy(ifname,ifname_in,sizeof(ifname));
++ 	if(0==strcasecmp(ifname_in,"wlan0"))
++ 	{
++ 	    strcpy(ifname,"eth0");
++ 	}
++ 
+  	struct ifaddrs *ifa, *ifap;
+  #ifdef __KAME__
+  	struct sockaddr_dl *sdl;
+***************
+*** 1298,1303 ****
+--- 1303,1313 ----
+  		*hwtypep = ARPHRD_ETHER;
+  		debug_printf(LOG_DEBUG, FNAME, "found an interface %s for DUID",
+  		    ifa->ifa_name);
++         if(0==strcasecmp(ifname_in,"wlan0"))
++         {
++             sll->sll_addr[sll->sll_halen-1]+=1;
++             debug_printf(LOG_DEBUG, FNAME, "gethwid %s: %s %02x", ifname_in,ifname_in,sll->sll_addr[sll->sll_halen-1]);
++         }
+  		memcpy(buf, sll->sll_addr, sll->sll_halen);
+  		l = sll->sll_halen; /* sll will soon be freed */
+  #endif
+***************
+*** 2014,2020 ****
+  
+  			if (dhcp6_find_listval(list, DHCP6_LISTVAL_PREFIX6,
+  			    &iapd_prefix, 0)) {
+! 				debug_printf(LOG_INFO, FNAME, 
+  				    "duplicated IA_PD prefix "
+  				    "%s/%d pltime=%lu vltime=%lu",
+  				    in6addr2str(&iapd_prefix.addr, 0),
+--- 2024,2030 ----
+  
+  			if (dhcp6_find_listval(list, DHCP6_LISTVAL_PREFIX6,
+  			    &iapd_prefix, 0)) {
+! 				debug_printf(LOG_INFO, FNAME,
+  				    "duplicated IA_PD prefix "
+  				    "%s/%d pltime=%lu vltime=%lu",
+  				    in6addr2str(&iapd_prefix.addr, 0),
+***************
+*** 2064,2070 ****
+  
+  			if (dhcp6_find_listval(list,
+  			    DHCP6_LISTVAL_STATEFULADDR6, &ia_addr, 0)) {
+! 				debug_printf(LOG_INFO, FNAME, 
+  				    "duplicated IA_NA address"
+  				    "%s pltime=%lu vltime=%lu",
+  				    in6addr2str(&ia_addr.addr, 0),
+--- 2074,2080 ----
+  
+  			if (dhcp6_find_listval(list,
+  			    DHCP6_LISTVAL_STATEFULADDR6, &ia_addr, 0)) {
+! 				debug_printf(LOG_INFO, FNAME,
+  				    "duplicated IA_NA address"
+  				    "%s pltime=%lu vltime=%lu",
+  				    in6addr2str(&ia_addr.addr, 0),
+***************
+*** 2243,2251 ****
+  #define DOMAIN_CFG_STR "STATIC_DOMAIN="
+  
+  static int ltrx_get_value_from_cfg_file(
+!     const char* cfgFile, 
+!     const char* valueNameStr, 
+!     char* valueBuf, 
+      int valueBufSize
+  )
+  {
+--- 2253,2261 ----
+  #define DOMAIN_CFG_STR "STATIC_DOMAIN="
+  
+  static int ltrx_get_value_from_cfg_file(
+!     const char* cfgFile,
+!     const char* valueNameStr,
+!     char* valueBuf,
+      int valueBufSize
+  )
+  {
+***************
+*** 2262,2273 ****
+  				char* pValue = &buf[strlen(valueNameStr)];
+  				int valueLen = strlen(pValue);
+  				int j = valueLen - 1;
+! 				
+  				/* Trim trailing newline characters */
+  				while (j >= 0 && pValue[j] == '\r' || pValue[j] == '\n')
+  				{
+  					pValue[j] = '\0';
+! 					--j;	
+  				}
+  				valueLen = strlen(pValue);
+  				if (valueBuf && valueLen > 0 && valueLen + 1 < valueBufSize)
+--- 2272,2283 ----
+  				char* pValue = &buf[strlen(valueNameStr)];
+  				int valueLen = strlen(pValue);
+  				int j = valueLen - 1;
+! 
+  				/* Trim trailing newline characters */
+  				while (j >= 0 && pValue[j] == '\r' || pValue[j] == '\n')
+  				{
+  					pValue[j] = '\0';
+! 					--j;
+  				}
+  				valueLen = strlen(pValue);
+  				if (valueBuf && valueLen > 0 && valueLen + 1 < valueBufSize)
+***************
+*** 2288,2304 ****
+  int ltrx_get_static_hostname(char* host, int hostBufSize)
+  {
+      /* !!!	Should change filename dynamically from interface name */
+! 	return ltrx_get_value_from_cfg_file("/etc/sysconfig/network_eth0", 
+  	            HOSTNAME_CFG_STR, host, hostBufSize
+! 	); 
+  }
+  
+  int ltrx_get_static_domain(char* host, int hostBufSize)
+  {
+      /* !!!	Should change filename dynamically from interface name */
+! 	return ltrx_get_value_from_cfg_file("/etc/sysconfig/static_domain_name_eth0", 
+  	            DOMAIN_CFG_STR, host, hostBufSize
+! 	); 
+  }
+  
+  /* !!!! END LTRX modification */
+--- 2298,2314 ----
+  int ltrx_get_static_hostname(char* host, int hostBufSize)
+  {
+      /* !!!	Should change filename dynamically from interface name */
+! 	return ltrx_get_value_from_cfg_file("/etc/sysconfig/network_eth0",
+  	            HOSTNAME_CFG_STR, host, hostBufSize
+! 	);
+  }
+  
+  int ltrx_get_static_domain(char* host, int hostBufSize)
+  {
+      /* !!!	Should change filename dynamically from interface name */
+! 	return ltrx_get_value_from_cfg_file("/etc/sysconfig/static_domain_name_eth0",
+  	            DOMAIN_CFG_STR, host, hostBufSize
+! 	);
+  }
+  
+  /* !!!! END LTRX modification */
+***************
+*** 2420,2426 ****
+                  {
+                      hostName[hostLen] = '.';
+                      strcpy(&hostName[hostLen + 1], domainName);
+!                 }   
+              }
+  
+  			fqdn[0] = 0;
+--- 2430,2436 ----
+                  {
+                      hostName[hostLen] = '.';
+                      strcpy(&hostName[hostLen + 1], domainName);
+!                 }
+              }
+  
+  			fqdn[0] = 0;
+***************
+*** 2428,2438 ****
+  			if (hostLen <= 0) {
+  				goto fail;
+  			}
+! 			++hostLen; 
+  
+! 			if (copy_option(DH6OPT_CLIENT_FQDN, hostLen, fqdn, &p, 
+              	optep, &len) != 0) {
+! 				goto fail;		
+  			}
+  			requestFQDN = 1;
+  		}
+--- 2438,2448 ----
+  			if (hostLen <= 0) {
+  				goto fail;
+  			}
+! 			++hostLen;
+  
+! 			if (copy_option(DH6OPT_CLIENT_FQDN, hostLen, fqdn, &p,
+              	optep, &len) != 0) {
+! 				goto fail;
+  			}
+  			requestFQDN = 1;
+  		}
+***************
+*** 2655,2661 ****
+  				debug_printf(LOG_DEBUG, FNAME,
+  				    "key ID %x, offset %d",
+  				    optinfo->delayedauth_keyid,
+! 				    optinfo->delayedauth_offset); 
+  				break;
+  #ifdef notyet
+  			case DHCP6_AUTHPROTO_RECONFIG:
+--- 2665,2671 ----
+  				debug_printf(LOG_DEBUG, FNAME,
+  				    "key ID %x, offset %d",
+  				    optinfo->delayedauth_keyid,
+! 				    optinfo->delayedauth_offset);
+  				break;
+  #ifdef notyet
+  			case DHCP6_AUTHPROTO_RECONFIG:
+***************
+*** 3431,3438 ****
+  	if (ioctl(s, SIOGIFINDEX, &ifr) < 0) {
+  		debug_printf(LOG_NOTICE, FNAME, "failed to get the index of %s: %s",
+  		    ifname, strerror(errno));
+! 		close(s); 
+! 		return (-1); 
+  	}
+  	memcpy(&req.ifr6_addr, &addr->sin6_addr, sizeof(struct in6_addr));
+  	req.ifr6_prefixlen = plen;
+--- 3441,3448 ----
+  	if (ioctl(s, SIOGIFINDEX, &ifr) < 0) {
+  		debug_printf(LOG_NOTICE, FNAME, "failed to get the index of %s: %s",
+  		    ifname, strerror(errno));
+! 		close(s);
+! 		return (-1);
+  	}
+  	memcpy(&req.ifr6_addr, &addr->sin6_addr, sizeof(struct in6_addr));
+  	req.ifr6_prefixlen = plen;
+***************
+*** 3471,3487 ****
+  		snprintf(fileName, sizeof(fileName), "/etc/sysconfig/dhcp6_ip_%s", ifname);
+  		if (IFADDRCONF_ADD == cmd)
+  		{
+! 			if (getnameinfo(addr, sizeof(struct sockaddr_in6), ipStr, sizeof(ipStr), 
+                              NULL, 0, NI_NUMERICHOST) == 0)
+  			{
+  				FILE* fp = NULL;
+! 	
+  				fp = fopen(fileName, "w");
+  				if (fp != NULL)
+  				{
+  					fprintf(fp, "DHCP6_IPADDR=%s\n", ipStr);
+  					fclose(fp);
+! 				}	
+  			}
+  		}
+  		else /* IFADDRCONF_REMOVE == cmd */
+--- 3481,3497 ----
+  		snprintf(fileName, sizeof(fileName), "/etc/sysconfig/dhcp6_ip_%s", ifname);
+  		if (IFADDRCONF_ADD == cmd)
+  		{
+! 			if (getnameinfo(addr, sizeof(struct sockaddr_in6), ipStr, sizeof(ipStr),
+                              NULL, 0, NI_NUMERICHOST) == 0)
+  			{
+  				FILE* fp = NULL;
+! 
+  				fp = fopen(fileName, "w");
+  				if (fp != NULL)
+  				{
+  					fprintf(fp, "DHCP6_IPADDR=%s\n", ipStr);
+  					fclose(fp);
+! 				}
+  			}
+  		}
+  		else /* IFADDRCONF_REMOVE == cmd */
+***************
+*** 3490,3496 ****
+  		}
+  	}
+  	/* end LTRX modification */
+! 	
+  	return (0);
+  }
+  
+--- 3500,3506 ----
+  		}
+  	}
+  	/* end LTRX modification */
+! 
+  	return (0);
+  }
+  
+*** wide-dhcpv6-20080615/dhcp6.h	2015-06-19 13:42:47.223259430 -0700
+--- wide-dhcpv6-20080615-ltrx/dhcp6.h	2015-06-19 13:40:07.387268369 -0700
+***************
+*** 2,8 ****
+  /*
+   * Copyright (C) 1998 and 1999 WIDE Project.
+   * All rights reserved.
+!  * 
+   * Redistribution and use in source and binary forms, with or without
+   * modification, are permitted provided that the following conditions
+   * are met:
+--- 2,8 ----
+  /*
+   * Copyright (C) 1998 and 1999 WIDE Project.
+   * All rights reserved.
+!  *
+   * Redistribution and use in source and binary forms, with or without
+   * modification, are permitted provided that the following conditions
+   * are met:
+***************
+*** 14,20 ****
+   * 3. Neither the name of the project nor the names of its contributors
+   *    may be used to endorse or promote products derived from this software
+   *    without specific prior written permission.
+!  * 
+   * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+   * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+--- 14,20 ----
+   * 3. Neither the name of the project nor the names of its contributors
+   *    may be used to endorse or promote products derived from this software
+   *    without specific prior written permission.
+!  *
+   * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+   * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+***************
+*** 326,331 ****
+--- 326,338 ----
+  	/* link-layer address follows */
+  } __attribute__ ((__packed__));
+  
++ /* DUID type 3 */
++ struct dhcp6opt_duid_type3 {
++ 	u_int16_t dh6_duid1_type;
++ 	u_int16_t dh6_duid1_hwtype;
++ 	/* link-layer address follows */
++ } __attribute__ ((__packed__));
++ 
+  /* Status Code */
+  struct dhcp6opt_stcode {
+  	u_int16_t dh6_stcode_type;
+*** wide-dhcpv6-20080615/dhcp6c.c	2015-06-19 13:42:47.215259430 -0700
+--- wide-dhcpv6-20080615-ltrx/dhcp6c.c	2015-06-19 13:59:32.951203177 -0700
+***************
+*** 2,8 ****
+  /*
+   * Copyright (C) 1998 and 1999 WIDE Project.
+   * All rights reserved.
+!  * 
+   * Redistribution and use in source and binary forms, with or without
+   * modification, are permitted provided that the following conditions
+   * are met:
+--- 2,8 ----
+  /*
+   * Copyright (C) 1998 and 1999 WIDE Project.
+   * All rights reserved.
+!  *
+   * Redistribution and use in source and binary forms, with or without
+   * modification, are permitted provided that the following conditions
+   * are met:
+***************
+*** 14,20 ****
+   * 3. Neither the name of the project nor the names of its contributors
+   *    may be used to endorse or promote products derived from this software
+   *    without specific prior written permission.
+!  * 
+   * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+   * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+--- 14,20 ----
+   * 3. Neither the name of the project nor the names of its contributors
+   *    may be used to endorse or promote products derived from this software
+   *    without specific prior written permission.
+!  *
+   * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+   * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+***************
+*** 114,120 ****
+  static inline int get_ifname __P((char **, int *, char *, int));
+  
+  static void usage __P((void));
+! static void client6_init __P((void));
+  static void client6_startall __P((int));
+  static void free_resources __P((struct dhcp6_if *));
+  static void client6_mainloop __P((void));
+--- 114,120 ----
+  static inline int get_ifname __P((char **, int *, char *, int));
+  
+  static void usage __P((void));
+! static void client6_init __P((const char*));
+  static void client6_startall __P((int));
+  static void free_resources __P((struct dhcp6_if *));
+  static void client6_mainloop __P((void));
+***************
+*** 212,219 ****
+  
+  	setloglevel(debug);
+  
+! 	client6_init();
+! 	while (argc-- > 0) { 
+  		if ((ifp = ifinit(argv[0])) == NULL) {
+  			debug_printf(LOG_ERR, FNAME, "failed to initialize %s",
+  			    argv[0]);
+--- 212,219 ----
+  
+  	setloglevel(debug);
+  
+! 	client6_init(argv[0]);
+! 	while (argc-- > 0) {
+  		if ((ifp = ifinit(argv[0])) == NULL) {
+  			debug_printf(LOG_ERR, FNAME, "failed to initialize %s",
+  			    argv[0]);
+***************
+*** 257,270 ****
+  /*------------------------------------------------------------*/
+  
+  void
+! client6_init()
+  {
+  	struct addrinfo hints, *res;
+  	static struct sockaddr_in6 sa6_allagent_storage;
+  	int error, on = 1;
+  
+  	/* get our DUID */
+! 	if (get_duid(DUID_FILE, &client_duid)) {
+  		debug_printf(LOG_ERR, FNAME, "failed to get a DUID");
+  		exit(1);
+  	}
+--- 257,272 ----
+  /*------------------------------------------------------------*/
+  
+  void
+! client6_init(const char* ifname)
+  {
+  	struct addrinfo hints, *res;
+  	static struct sockaddr_in6 sa6_allagent_storage;
+  	int error, on = 1;
+  
+  	/* get our DUID */
+! 	char duid_file[256];
+! 	snprintf(duid_file,sizeof(duid_file),"%s_%s",DUID_FILE,ifname);
+! 	if (get_duid(duid_file, ifname, &client_duid)) {
+  		debug_printf(LOG_ERR, FNAME, "failed to get a DUID");
+  		exit(1);
+  	}
+***************
+*** 996,1002 ****
+  	if (ial)
+  		free(ial);
+  	dhcp6_remove_event(ev);	/* XXX */
+! 	
+  	return (-1);
+  }
+  
+--- 998,1004 ----
+  	if (ial)
+  		free(ial);
+  	dhcp6_remove_event(ev);	/* XXX */
+! 
+  	return (-1);
+  }
+  
+***************
+*** 1092,1098 ****
+  	if (ial)
+  		free(ial);
+  	dhcp6_remove_event(ev);	/* XXX */
+! 	
+  	return (-1);
+  }
+  
+--- 1094,1100 ----
+  	if (ial)
+  		free(ial);
+  	dhcp6_remove_event(ev);	/* XXX */
+! 
+  	return (-1);
+  }
+  
+***************
+*** 1261,1267 ****
+  			/*
+  			 * Perhaps we are nervous too much, but without this
+  			 * additional check, we would see an overflow in 248
+! 			 * days (of no responses). 
+  			 */
+  			et = MAX_ELAPSED_TIME;
+  		} else {
+--- 1263,1269 ----
+  			/*
+  			 * Perhaps we are nervous too much, but without this
+  			 * additional check, we would see an overflow in 248
+! 			 * days (of no responses).
+  			 */
+  			et = MAX_ELAPSED_TIME;
+  		} else {
+***************
+*** 1529,1535 ****
+  	 * includes a Status Code option containing the value NoPrefixAvail
+  	 * [RFC3633 Section 11.1].
+  	 * Likewise, the client MUST ignore any Advertise message that includes
+! 	 * a Status Code option containing the value NoAddrsAvail. 
+  	 * [RFC3315 Section 17.1.3].
+  	 * We only apply this when we are going to request an address or
+  	 * a prefix.
+--- 1531,1537 ----
+  	 * includes a Status Code option containing the value NoPrefixAvail
+  	 * [RFC3633 Section 11.1].
+  	 * Likewise, the client MUST ignore any Advertise message that includes
+! 	 * a Status Code option containing the value NoAddrsAvail.
+  	 * [RFC3315 Section 17.1.3].
+  	 * We only apply this when we are going to request an address or
+  	 * a prefix.
+*** wide-dhcpv6-20080615/dhcp6s.c	2015-06-19 13:42:47.183259432 -0700
+--- wide-dhcpv6-20080615-ltrx/dhcp6s.c	2015-06-19 14:00:53.787198655 -0700
+***************
+*** 2,8 ****
+  /*
+   * Copyright (C) 1998 and 1999 WIDE Project.
+   * All rights reserved.
+!  * 
+   * Redistribution and use in source and binary forms, with or without
+   * modification, are permitted provided that the following conditions
+   * are met:
+--- 2,8 ----
+  /*
+   * Copyright (C) 1998 and 1999 WIDE Project.
+   * All rights reserved.
+!  *
+   * Redistribution and use in source and binary forms, with or without
+   * modification, are permitted provided that the following conditions
+   * are met:
+***************
+*** 14,20 ****
+   * 3. Neither the name of the project nor the names of its contributors
+   *    may be used to endorse or promote products derived from this software
+   *    without specific prior written permission.
+!  * 
+   * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+   * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+--- 14,20 ----
+   * 3. Neither the name of the project nor the names of its contributors
+   *    may be used to endorse or promote products derived from this software
+   *    without specific prior written permission.
+!  *
+   * THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+   * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+***************
+*** 383,389 ****
+  	}
+  
+  	/* get our DUID */
+! 	if (get_duid(DUID_FILE, &server_duid)) {
+  		debug_printf(LOG_ERR, FNAME, "failed to get a DUID");
+  		exit(1);
+  	}
+--- 383,389 ----
+  	}
+  
+  	/* get our DUID */
+! 	if (get_duid(DUID_FILE, NULL, &server_duid)) {
+  		debug_printf(LOG_ERR, FNAME, "failed to get a DUID");
+  		exit(1);
+  	}
+***************
+*** 605,611 ****
+  	fd_set r;
+  	int maxsock;
+  
+! 	
+  	while (1) {
+  		if (sig_flags)
+  			process_signals();
+--- 605,611 ----
+  	fd_set r;
+  	int maxsock;
+  
+! 
+  	while (1) {
+  		if (sig_flags)
+  			process_signals();
+***************
+*** 812,818 ****
+  			}
+  		}
+  		remove_binding(binding);
+! 		    
+  		break;
+  	default:
+  		debug_printf(LOG_INFO, FNAME,
+--- 812,818 ----
+  			}
+  		}
+  		remove_binding(binding);
+! 
+  		break;
+  	default:
+  		debug_printf(LOG_INFO, FNAME,
+***************
+*** 901,907 ****
+  		return;
+  	}
+  	/*
+! 	 * DHCPv6 server may receive a DHCPv6 packet from a non-listening 
+  	 * interface, when a DHCPv6 relay agent is running on that interface.
+  	 * This check prevents such reception.
+  	 */
+--- 901,907 ----
+  		return;
+  	}
+  	/*
+! 	 * DHCPv6 server may receive a DHCPv6 packet from a non-listening
+  	 * interface, when a DHCPv6 relay agent is running on that interface.
+  	 * This check prevents such reception.
+  	 */
+***************
+*** 948,954 ****
+  		debug_printf(LOG_INFO, FNAME, "relay reply message from %s",
+  		    addr2str((struct sockaddr *)&from));
+  		return;
+! 		
+  	}
+  
+  	optend = (struct dhcp6opt *)(rdatabuf + len);
+--- 948,954 ----
+  		debug_printf(LOG_INFO, FNAME, "relay reply message from %s",
+  		    addr2str((struct sockaddr *)&from));
+  		return;
+! 
+  	}
+  
+  	optend = (struct dhcp6opt *)(rdatabuf + len);
+***************
+*** 1518,1524 ****
+  	 * See if we have to make a binding of some configuration information
+  	 * for the client.
+  	 */
+! 	
+  	/*
+  	 * When a delegating router receives a Request message from a
+  	 * requesting router that contains an IA_PD option, and the delegating
+--- 1518,1524 ----
+  	 * See if we have to make a binding of some configuration information
+  	 * for the client.
+  	 */
+! 
+  	/*
+  	 * When a delegating router receives a Request message from a
+  	 * requesting router that contains an IA_PD option, and the delegating
+***************
+*** 2232,2244 ****
+  		}
+  
+  		/*
+! 		 * check whether the confirmed prefix matches 
+  		 * the prefix from where the message originates.
+  		 * XXX: prefix length is assumed to be 64
+  		 */
+  		for (iaaddr = TAILQ_FIRST(&iana->sublist); iaaddr;
+  		    iaaddr = TAILQ_NEXT(iaaddr, link)) {
+! 		
+  			struct in6_addr *confaddr = &iaaddr->val_statefuladdr6.addr;
+  			struct in6_addr *linkaddr;
+  			struct sockaddr_in6 *src = (struct sockaddr_in6 *)from;
+--- 2232,2244 ----
+  		}
+  
+  		/*
+! 		 * check whether the confirmed prefix matches
+  		 * the prefix from where the message originates.
+  		 * XXX: prefix length is assumed to be 64
+  		 */
+  		for (iaaddr = TAILQ_FIRST(&iana->sublist); iaaddr;
+  		    iaaddr = TAILQ_NEXT(iaaddr, link)) {
+! 
+  			struct in6_addr *confaddr = &iaaddr->val_statefuladdr6.addr;
+  			struct in6_addr *linkaddr;
+  			struct sockaddr_in6 *src = (struct sockaddr_in6 *)from;
+***************
+*** 2272,2278 ****
+  		}
+  	}
+  
+! 	/* 
+  	 * even when the given address seems to be on the appropriate link,
+  	 * the confirm should be ignore if there's no corrensponding IA-NA
+  	 * configuration.
+--- 2272,2278 ----
+  		}
+  	}
+  
+! 	/*
+  	 * even when the given address seems to be on the appropriate link,
+  	 * the confirm should be ignore if there's no corrensponding IA-NA
+  	 * configuration.
+***************
+*** 2642,2648 ****
+  	}
+  
+  	/*
+! 	 * If the IAs in the message are in a binding for the client and the 
+  	 * addresses in the IAs have been assigned by the server to those IAs,
+  	 * the server deletes the addresses from the IAs and makes the addresses
+  	 * available for assignment to other clients. [RFC3315 Section 18.2.7]
+--- 2642,2648 ----
+  	}
+  
+  	/*
+! 	 * If the IAs in the message are in a binding for the client and the
+  	 * addresses in the IAs have been assigned by the server to those IAs,
+  	 * the server deletes the addresses from the IAs and makes the addresses
+  	 * available for assignment to other clients. [RFC3315 Section 18.2.7]
+***************
+*** 3397,3403 ****
+  				    in6addr2str(&iav->val_prefix6.addr, 0),
+  				    iav->val_prefix6.plen,
+  				    bindingstr(binding));
+! 				if (binding->iatype == DHCP6_LISTVAL_IANA) 
+  					release_address(&iav->val_prefix6.addr);
+  				TAILQ_REMOVE(ia_list, iav, link);
+  				dhcp6_clear_listval(iav);
+--- 3397,3403 ----
+  				    in6addr2str(&iav->val_prefix6.addr, 0),
+  				    iav->val_prefix6.plen,
+  				    bindingstr(binding));
+! 				if (binding->iatype == DHCP6_LISTVAL_IANA)
+  					release_address(&iav->val_prefix6.addr);
+  				TAILQ_REMOVE(ia_list, iav, link);
+  				dhcp6_clear_listval(iav);
+***************
+*** 3542,3548 ****
+  				    "authentication information "
+  				    "provided in solicit from %s",
+  				    clientstr(client_conf,
+! 				    &optinfo->clientID)); 
+  				/* accept it anyway. (or discard?) */
+  			}
+  		} else {
+--- 3542,3548 ----
+  				    "authentication information "
+  				    "provided in solicit from %s",
+  				    clientstr(client_conf,
+! 				    &optinfo->clientID));
+  				/* accept it anyway. (or discard?) */
+  			}
+  		} else {

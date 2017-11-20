@@ -1,0 +1,40 @@
+diff -Naur miniupnpd-1.9.20141209_orig/genconfig.sh miniupnpd-1.9.20141209_mod/genconfig.sh
+--- miniupnpd-1.9.20141209_orig/genconfig.sh	2014-12-04 16:14:05.000000000 +0530
++++ miniupnpd-1.9.20141209_mod/genconfig.sh	2015-05-08 12:54:36.915973926 +0530
+@@ -47,8 +47,8 @@
+ LOG_MINIUPNPD="LOG_DAEMON"
+ 
+ # detecting the OS name and version
+-OS_NAME=`uname -s`
+-OS_VERSION=`uname -r`
++OS_NAME=Nuevo
++OS_VERSION=$LTRX_PRODUCT_VERSION
+ 
+ # pfSense special case
+ if [ -f /etc/platform ]; then
+@@ -287,8 +287,15 @@
+ 		fi
+ 		OS_URL=http://developer.apple.com/macosx
+ 		;;
++        Nuevo)
++                OS_URL=http://www.lantronix.com
++                echo "#define USE_NETFILTER 1" >> ${CONFIGFILE}
++                echo "#define USE_IFACEWATCHER 1" >> ${CONFIGFILE}
++                FW=netfilter
++                ;;
++
+ 	*)
+-		echo "Unknown OS : $OS_NAME"
++		echo "Using Unknown OS : $OS_NAME"
+ 		echo "Please contact the author at http://miniupnp.free.fr/ or http://miniupnp.tuxfamily.org/."
+ 		exit 1
+ 		;;
+@@ -330,7 +337,7 @@
+ 
+ echo "" >> ${CONFIGFILE}
+ echo "#define OS_NAME		\"$OS_NAME\"" >> ${CONFIGFILE}
+-echo "#define OS_VERSION	\"$OS_NAME/$OS_VERSION\"" >> ${CONFIGFILE}
++echo "#define OS_VERSION       \"$OS_VERSION\"" >> ${CONFIGFILE}
+ echo "#define OS_URL		\"${OS_URL}\"" >> ${CONFIGFILE}
+ echo "" >> ${CONFIGFILE}
+ 

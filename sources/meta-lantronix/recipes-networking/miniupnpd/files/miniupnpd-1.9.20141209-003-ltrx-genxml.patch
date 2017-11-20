@@ -1,0 +1,56 @@
+diff -Naur miniupnpd-1.9.20141209_orig/upnpdescgen.c miniupnpd-1.9.20141209_mod/upnpdescgen.c
+--- miniupnpd-1.9.20141209_orig/upnpdescgen.c	2014-10-21 19:45:14.000000000 +0530
++++ miniupnpd-1.9.20141209_mod/upnpdescgen.c	2015-04-29 14:55:17.568346858 +0530
+@@ -8,6 +8,9 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <unistd.h>
++#include <sys/types.h>
++#include <sys/stat.h>
+ 
+ #include "config.h"
+ #ifdef ENABLE_EVENTS
+@@ -31,6 +34,9 @@
+ #define EXTERNALIPADDRESS_MAGICALVALUE (254)
+ #define DEFAULTCONNECTIONSERVICE_MAGICALVALUE (255)
+ 
++#define LTRX
++#define UPNPXML "/etc/miniupnpd.xml"
++
+ 
+ static const char * const upnptypes[] =
+ {
+@@ -933,7 +939,23 @@
+ char *
+ genRootDesc(int * len)
+ {
+-	char * str;
++       char * str=NULL;
++#ifdef LTRX
++       (*len)=0;
++       struct stat buf;
++       if(stat(UPNPXML,&buf)==0)
++       {
++               (*len)=buf.st_size;
++               FILE* fp=fopen(UPNPXML,"r");
++               if(fp)
++               { 
++                       str=(char*)malloc((*len)+1);
++                       memset(str,0,(*len)+1);
++                       fread(str,*len,1,fp);
++                       fclose(fp);
++               }
++       }
++#else
+ 	int tmplen;
+ 	tmplen = 2048;
+ 	str = (char *)malloc(tmplen);
+@@ -944,6 +966,7 @@
+ 	memcpy(str, xmlver, *len + 1);
+ 	str = genXML(str, len, &tmplen, rootDesc);
+ 	str[*len] = '\0';
++#endif
+ 	return str;
+ }
+ 

@@ -1,0 +1,528 @@
+--- dropbear-2014.63/options.h	2015-09-03 15:47:26.038224605 -0700
++++ dropbear-2014.63-ltrx/options.h	2015-09-03 15:41:05.434245895 -0700
+@@ -75,7 +75,7 @@
+ /* Note: Both ENABLE_CLI_PROXYCMD and ENABLE_CLI_NETCAT must be set to
+  * allow multihop dbclient connections */
+ 
+-/* Allow using -J <proxycommand> to run the connection through a 
++/* Allow using -J <proxycommand> to run the connection through a
+    pipe to a program, rather the normal TCP connection */
+ #define ENABLE_CLI_PROXYCMD
+ 
+@@ -88,7 +88,7 @@
+ 
+ /* Encryption - at least one required.
+  * Protocol RFC requires 3DES and recommends AES128 for interoperability.
+- * Including multiple keysize variants the same cipher 
++ * Including multiple keysize variants the same cipher
+  * (eg AES256 as well as AES128) will result in a minimal size increase.*/
+ #define DROPBEAR_AES128
+ #define DROPBEAR_3DES
+@@ -99,7 +99,7 @@
+ #define DROPBEAR_TWOFISH128
+ 
+ /* Enable "Counter Mode" for ciphers. This is more secure than normal
+- * CBC mode against certain attacks. This adds around 1kB to binary 
++ * CBC mode against certain attacks. This adds around 1kB to binary
+  * size and is recommended for most cases */
+ #define DROPBEAR_ENABLE_CTR_MODE
+ 
+@@ -146,7 +146,7 @@
+ /* Generate hostkeys as-needed when the first connection using that key type occurs.
+    This avoids the need to otherwise run "dropbearkey" and avoids some problems
+    with badly seeded /dev/urandom when systems first boot.
+-   This also requires a runtime flag "-R". This adds ~4kB to binary size (or hardly 
++   This also requires a runtime flag "-R". This adds ~4kB to binary size (or hardly
+    anything if dropbearkey is linked in a "dropbearmulti" binary) */
+ #define DROPBEAR_DELAY_HOSTKEY
+ 
+@@ -167,7 +167,7 @@
+  * Both modes will use ~35kB for decompression (using windowBits=15 for
+  * interoperability) */
+ #ifndef DROPBEAR_ZLIB_WINDOW_BITS
+-#define DROPBEAR_ZLIB_WINDOW_BITS 15 
++#define DROPBEAR_ZLIB_WINDOW_BITS 15
+ #endif
+ 
+ /* Whether to do reverse DNS lookups. */
+@@ -197,7 +197,7 @@
+ /*#define ENABLE_SVR_PAM_AUTH */
+ #define ENABLE_SVR_PUBKEY_AUTH
+ 
+-/* Whether to take public key options in 
++/* Whether to take public key options in
+  * authorized_keys file into account */
+ #ifdef ENABLE_SVR_PUBKEY_AUTH
+ #define ENABLE_SVR_PUBKEY_OPTIONS
+@@ -211,7 +211,7 @@
+  * authentication on the commandline. Beware of platforms
+  * that don't protect environment variables of processes etc. Also
+  * note that it will be provided for all "hidden" client-interactive
+- * style prompts - if you want something more sophisticated, use 
++ * style prompts - if you want something more sophisticated, use
+  * SSH_ASKPASS instead. Comment out this var to remove this functionality.*/
+ #define DROPBEAR_PASSWORD_ENV "DROPBEAR_PASSWORD"
+ 
+@@ -241,13 +241,13 @@
+  * not yet authenticated. After this limit, connections are rejected */
+ /* The first setting is per-IP, to avoid denial of service */
+ #ifndef MAX_UNAUTH_PER_IP
+-#define MAX_UNAUTH_PER_IP 5
++#define MAX_UNAUTH_PER_IP 10
+ #endif
+ 
+-/* And then a global limit to avoid chewing memory if connections 
++/* And then a global limit to avoid chewing memory if connections
+  * come from many IPs */
+ #ifndef MAX_UNAUTH_CLIENTS
+-#define MAX_UNAUTH_CLIENTS 30
++#define MAX_UNAUTH_CLIENTS 256
+ #endif
+ 
+ /* Maximum number of failed authentication tries (server option) */
+@@ -278,8 +278,8 @@
+  * not using the Dropbear client, you'll need to change it */
+ #define _PATH_SSH_PROGRAM "/usr/bin/dbclient"
+ 
+-/* Whether to log commands executed by a client. This only logs the 
+- * (single) command sent to the server, not what a user did in a 
++/* Whether to log commands executed by a client. This only logs the
++ * (single) command sent to the server, not what a user did in a
+  * shell/sftp session etc. */
+ /* #define LOG_COMMANDS */
+ 
+--- dropbear-2014.63/runopts.h	2014-02-19 06:05:24.000000000 -0800
++++ dropbear-2014.63-ltrx/runopts.h	2015-09-03 15:48:06.330222348 -0700
+@@ -1,19 +1,19 @@
+ /*
+  * Dropbear - a SSH2 server
+- * 
++ *
+  * Copyright (c) 2002,2003 Matt Johnston
+  * All rights reserved.
+- * 
++ *
+  * Permission is hereby granted, free of charge, to any person obtaining a copy
+  * of this software and associated documentation files (the "Software"), to deal
+  * in the Software without restriction, including without limitation the rights
+  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  * copies of the Software, and to permit persons to whom the Software is
+  * furnished to do so, subject to the following conditions:
+- * 
++ *
+  * The above copyright notice and this permission notice shall be included in
+  * all copies or substantial portions of the Software.
+- * 
++ *
+  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+@@ -56,7 +56,7 @@
+ 
+ extern runopts opts;
+ 
+-int readhostkey(const char * filename, sign_key * hostkey, 
++int readhostkey(const char * filename, sign_key * hostkey,
+ 	enum signkey_type *type);
+ void load_all_hostkeys();
+ 
+@@ -108,6 +108,8 @@
+ 	buffer * banner;
+ 	char * pidfile;
+ 
++	unsigned int max_sessions;
++
+ } svr_runopts;
+ 
+ extern svr_runopts svr_opts;
+@@ -142,7 +144,7 @@
+ #endif
+ #ifdef ENABLE_CLI_AGENTFWD
+ 	int agent_fwd;
+-	int agent_keys_loaded; /* whether pubkeys has been populated with a 
++	int agent_keys_loaded; /* whether pubkeys has been populated with a
+ 							  list of keys held by the agent */
+ 	int agent_fd; /* The agent fd is only set during authentication. Forwarded
+ 	                 agent sessions have their own file descriptors */
+--- dropbear-2014.63/svr-runopts.c	2014-02-19 06:05:24.000000000 -0800
++++ dropbear-2014.63-ltrx/svr-runopts.c	2015-09-03 15:48:59.922219352 -0700
+@@ -1,19 +1,19 @@
+ /*
+  * Dropbear - a SSH2 server
+- * 
++ *
+  * Copyright (c) 2002,2003 Matt Johnston
+  * All rights reserved.
+- * 
++ *
+  * Permission is hereby granted, free of charge, to any person obtaining a copy
+  * of this software and associated documentation files (the "Software"), to deal
+  * in the Software without restriction, including without limitation the rights
+  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  * copies of the Software, and to permit persons to whom the Software is
+  * furnished to do so, subject to the following conditions:
+- * 
++ *
+  * The above copyright notice and this permission notice shall be included in
+  * all copies or substantial portions of the Software.
+- * 
++ *
+  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+@@ -56,7 +56,7 @@
+ 					"		ecdsa %s\n"
+ #endif
+ #ifdef DROPBEAR_DELAY_HOSTKEY
+-					"-R		Create hostkeys as required\n" 
++					"-R		Create hostkeys as required\n"
+ #endif
+ 					"-F		Don't fork into background\n"
+ #ifdef DISABLE_SYSLOG
+@@ -86,6 +86,10 @@
+ 					"		(default port is %s if none specified)\n"
+ 					"-P PidFile	Create pid file PidFile\n"
+ 					"		(default %s)\n"
++					"-M <max sessions>\n"
++					"		This overrides the maximum number of concurrent SSH sessions,\n"
++					"		up to 30 can be specified\n"
++					"		(default number is %d if none specified)\n"
+ #ifdef INETD_MODE
+ 					"-i		Start for inetd\n"
+ #endif
+@@ -105,7 +109,7 @@
+ #ifdef DROPBEAR_ECDSA
+ 					ECDSA_PRIV_FILENAME,
+ #endif
+-					DROPBEAR_MAX_PORTS, DROPBEAR_DEFPORT, DROPBEAR_PIDFILE,
++					DROPBEAR_MAX_PORTS, DROPBEAR_DEFPORT, DROPBEAR_PIDFILE,MAX_UNAUTH_PER_IP,
+ 					DEFAULT_RECV_WINDOW, DEFAULT_KEEPALIVE, DEFAULT_IDLE_TIMEOUT);
+ }
+ 
+@@ -114,6 +118,7 @@
+ 	unsigned int i;
+ 	char ** next = 0;
+ 	int nextisport = 0;
++	int nextismaxsessions = 0;
+ 	char* recv_window_arg = NULL;
+ 	char* keepalive_arg = NULL;
+ 	char* idle_timeout_arg = NULL;
+@@ -133,6 +138,7 @@
+ 	svr_opts.hostkey = NULL;
+ 	svr_opts.delay_hostkey = 0;
+ 	svr_opts.pidfile = DROPBEAR_PIDFILE;
++	svr_opts.max_sessions=MAX_UNAUTH_PER_IP;
+ #ifdef ENABLE_SVR_LOCALTCPFWD
+ 	svr_opts.nolocaltcp = 0;
+ #endif
+@@ -155,7 +161,7 @@
+ 	opts.recv_window = DEFAULT_RECV_WINDOW;
+ 	opts.keepalive_secs = DEFAULT_KEEPALIVE;
+ 	opts.idle_timeout_secs = DEFAULT_IDLE_TIMEOUT;
+-	
++
+ #ifdef ENABLE_SVR_REMOTETCPFWD
+ 	opts.listen_fwd_all = 0;
+ #endif
+@@ -166,7 +172,21 @@
+ 			nextisport = 0;
+ 			continue;
+ 		}
+-	  
++        if(nextismaxsessions)
++        {
++            unsigned int max_sessions=0;
++            if (m_str_to_uint(argv[i], &max_sessions) == DROPBEAR_FAILURE)
++            {
++                dropbear_exit("Bad max_sessions '%s'", argv[i]);
++            }
++            if(max_sessions>MAX_UNAUTH_CLIENTS)
++            {
++                dropbear_exit("Bad max_sessions '%s'", argv[i]);
++            }
++            svr_opts.max_sessions=max_sessions;
++            nextismaxsessions=0;
++            continue;
++        }
+ 		if (next) {
+ 			*next = argv[i];
+ 			if (*next == NULL) {
+@@ -225,6 +245,9 @@
+ 				case 'P':
+ 					next = &svr_opts.pidfile;
+ 					break;
++				case 'M':
++                    nextismaxsessions=1;
++					break;
+ #ifdef DO_MOTD
+ 				/* motd is displayed by default, -m turns it off */
+ 				case 'm':
+@@ -288,7 +311,7 @@
+ 			dropbear_exit("Error opening banner file '%s'",
+ 					svr_opts.bannerfile);
+ 		}
+-		
++
+ 		if (buf.st_size > MAX_BANNER_SIZE) {
+ 			dropbear_exit("Banner file too large, max is %d bytes",
+ 					MAX_BANNER_SIZE);
+@@ -301,14 +324,14 @@
+ 		}
+ 		buf_setpos(svr_opts.banner, 0);
+ 	}
+-	
++
+ 	if (recv_window_arg) {
+ 		opts.recv_window = atol(recv_window_arg);
+ 		if (opts.recv_window == 0 || opts.recv_window > MAX_RECV_WINDOW) {
+ 			dropbear_exit("Bad recv window '%s'", recv_window_arg);
+ 		}
+ 	}
+-	
++
+ 	if (keepalive_arg) {
+ 		unsigned int val;
+ 		if (m_str_to_uint(keepalive_arg, &val) == DROPBEAR_FAILURE) {
+@@ -358,7 +381,7 @@
+ 			svr_opts.ports[svr_opts.portcount] = myspec;
+ 		} else {
+ 			/* Split the address/port */
+-			svr_opts.ports[svr_opts.portcount][0] = '\0'; 
++			svr_opts.ports[svr_opts.portcount][0] = '\0';
+ 			svr_opts.ports[svr_opts.portcount]++;
+ 			svr_opts.addresses[svr_opts.portcount] = myspec;
+ 		}
+--- dropbear-2014.63/svr-main.c	2014-02-19 06:05:24.000000000 -0800
++++ dropbear-2014.63-ltrx/svr-main.c	2015-09-03 15:41:05.454245892 -0700
+@@ -1,19 +1,19 @@
+ /*
+  * Dropbear - a SSH2 server
+- * 
++ *
+  * Copyright (c) 2002-2006 Matt Johnston
+  * All rights reserved.
+- * 
++ *
+  * Permission is hereby granted, free of charge, to any person obtaining a copy
+  * of this software and associated documentation files (the "Software"), to deal
+  * in the Software without restriction, including without limitation the rights
+  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  * copies of the Software, and to permit persons to whom the Software is
+  * furnished to do so, subject to the following conditions:
+- * 
++ *
+  * The above copyright notice and this permission notice shall be included in
+  * all copies or substantial portions of the Software.
+- * 
++ *
+  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+@@ -94,8 +94,8 @@
+ 	 * this */
+ 	setsid();
+ 
+-	/* Start service program 
+-	 * -1 is a dummy childpipe, just something we can close() without 
++	/* Start service program
++	 * -1 is a dummy childpipe, just something we can close() without
+ 	 * mattering. */
+ 	svr_session(0, -1);
+ 
+@@ -104,6 +104,59 @@
+ #endif /* INETD_MODE */
+ 
+ #ifdef NON_INETD_MODE
++static int get_running_instance_count(char *p_processname)
++{
++    DIR *dir_p;
++    struct dirent *dir_entry_p;
++    char dir_name[256];
++    char target_name[256];
++    int target_result;
++    char exe_link[256];
++    int errorcount;
++    int result;
++    int pid;
++    errorcount=0;
++    result=0;
++    pid=0;
++    dir_p = opendir("/proc/");
++    while(NULL != (dir_entry_p = readdir(dir_p))) {
++        if (strspn(dir_entry_p->d_name, "0123456789") == strlen(dir_entry_p->d_name)) {
++            strcpy(dir_name, "/proc/");
++            strcat(dir_name, dir_entry_p->d_name);
++            strcat(dir_name, "/");
++            exe_link[0] = 0;
++            strcat(exe_link, dir_name);
++            strcat(exe_link, "exe");
++            target_result = readlink(exe_link, target_name, sizeof(target_name)-1);
++            if (target_result > 0) {
++                target_name[target_result] = 0;
++                if (strstr(target_name, p_processname) != NULL) {
++                    pid = atoi(dir_entry_p->d_name);
++                    exe_link[0] = 0;
++                    strcat(exe_link, dir_name);
++                    strcat(exe_link, "cmdline");
++                    FILE* fp = fopen(exe_link, "r");
++                    if(fp)
++                    {
++                        if (fgets(target_name, 256, fp) != NULL)
++                        {
++                            if(strstr(target_name,p_processname))
++                            {
++                                result++;
++                            }
++                        }
++                        fclose(fp);
++                    }
++                }
++            }
++        }
++    }
++    closedir(dir_p);
++    return result;
++}
++#ifndef DROPBEAR_CONFIG_FILE
++#define DROPBEAR_CONFIG_FILE "/etc/dropbear.conf"
++#endif
+ void main_noinetd() {
+ 	fd_set fds;
+ 	unsigned int i, j;
+@@ -129,7 +182,7 @@
+ 		childpipes[i] = -1;
+ 	}
+ 	memset(preauth_addrs, 0x0, sizeof(preauth_addrs));
+-	
++
+ 	/* Set up the listening sockets */
+ 	listensockcount = listensockets(listensocks, MAX_LISTEN_ADDR, &maxsock);
+ 	if (listensockcount == 0)
+@@ -173,7 +226,7 @@
+ 	for(;;) {
+ 
+ 		FD_ZERO(&fds);
+-		
++
+ 		/* listening sockets */
+ 		for (i = 0; i < listensockcount; i++) {
+ 			FD_SET(listensocks[i], &fds);
+@@ -193,7 +246,7 @@
+ 			unlink(svr_opts.pidfile);
+ 			dropbear_exit("Terminated by signal");
+ 		}
+-		
++
+ 		if (val == 0) {
+ 			/* timeout reached - shouldn't happen. eh */
+ 			continue;
+@@ -226,11 +279,11 @@
+ 			struct sockaddr_storage remoteaddr;
+ 			socklen_t remoteaddrlen;
+ 
+-			if (!FD_ISSET(listensocks[i], &fds)) 
++			if (!FD_ISSET(listensocks[i], &fds))
+ 				continue;
+ 
+ 			remoteaddrlen = sizeof(remoteaddr);
+-			childsock = accept(listensocks[i], 
++			childsock = accept(listensocks[i],
+ 					(struct sockaddr*)&remoteaddr, &remoteaddrlen);
+ 
+ 			if (childsock < 0) {
+@@ -255,10 +308,41 @@
+ 				}
+ 			}
+ 
+-			if (num_unauthed_total >= MAX_UNAUTH_CLIENTS
++            //override max_sessions
++            system("cat "DROPBEAR_CONFIG_FILE" | grep max_sessions | awk -F'=' '{print $2}' > /tmp/dropbear_max_sessions");
++            FILE* fp=fopen("/tmp/dropbear_max_sessions","r");
++            int max_sessions=0;
++            if(fscanf(fp,"%d",&max_sessions)==1)
++            {
++                svr_opts.max_sessions=max_sessions;
++            }
++            fclose(fp);
++
++            if(svr_opts.max_sessions)
++            {
++                unsigned int running=get_running_instance_count("/usr/sbin/dropbear")-1;
++                dropbear_log(LOG_INFO, "Running: %d, Unauth: %d, Max allowed: %d",
++                             running,
++                             num_unauthed_total,
++                             svr_opts.max_sessions
++                );
++                if (num_unauthed_total >= svr_opts.max_sessions
++                        || num_unauthed_for_addr >= svr_opts.max_sessions) {
++                    goto out;
++                }
++                if(running>=svr_opts.max_sessions)
++                {
++                    dropbear_log(LOG_WARNING, "%d instances already running!",svr_opts.max_sessions);
++                    goto out;
++                }
++            }
++            else
++            {
++                if (num_unauthed_total >= MAX_UNAUTH_CLIENTS
+ 					|| num_unauthed_for_addr >= MAX_UNAUTH_PER_IP) {
+-				goto out;
+-			}
++				    goto out;
++			    }
++            }
+ 
+ 			seedrandom();
+ 
+@@ -278,7 +362,7 @@
+ 			}
+ 
+ 			addrandom((void*)&fork_ret, sizeof(fork_ret));
+-			
++
+ 			if (fork_ret > 0) {
+ 
+ 				/* parent */
+@@ -339,7 +423,7 @@
+ 
+ 	const int saved_errno = errno;
+ 
+-	while(waitpid(-1, NULL, WNOHANG) > 0); 
++	while(waitpid(-1, NULL, WNOHANG) > 0);
+ 
+ 	sa_chld.sa_handler = sigchld_handler;
+ 	sa_chld.sa_flags = SA_NOCLDSTOP;
+@@ -373,7 +457,7 @@
+ #endif
+ 
+ 	/* set up cleanup handler */
+-	if (signal(SIGINT, sigintterm_handler) == SIG_ERR || 
++	if (signal(SIGINT, sigintterm_handler) == SIG_ERR ||
+ #ifndef DEBUG_VALGRIND
+ 		signal(SIGTERM, sigintterm_handler) == SIG_ERR ||
+ #endif
+@@ -403,7 +487,7 @@
+ 
+ /* Set up listening sockets for all the requested ports */
+ static size_t listensockets(int *sock, size_t sockcount, int *maxfd) {
+-	
++
+ 	unsigned int i;
+ 	char* errstring = NULL;
+ 	size_t sockpos = 0;
+@@ -415,12 +499,12 @@
+ 
+ 		TRACE(("listening on '%s:%s'", svr_opts.addresses[i], svr_opts.ports[i]))
+ 
+-		nsock = dropbear_listen(svr_opts.addresses[i], svr_opts.ports[i], &sock[sockpos], 
++		nsock = dropbear_listen(svr_opts.addresses[i], svr_opts.ports[i], &sock[sockpos],
+ 				sockcount - sockpos,
+ 				&errstring, maxfd);
+ 
+ 		if (nsock < 0) {
+-			dropbear_log(LOG_WARNING, "Failed listening on '%s': %s", 
++			dropbear_log(LOG_WARNING, "Failed listening on '%s': %s",
+ 							svr_opts.ports[i], errstring);
+ 			m_free(errstring);
+ 			continue;

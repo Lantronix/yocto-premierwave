@@ -1,0 +1,12 @@
+--- mrouted-3.9.6_org/config.mk	2017-05-02 14:10:19.978452870 +0530
++++ mrouted-3.9.6/config.mk	2017-05-02 14:11:06.486452427 +0530
+@@ -4,7 +4,8 @@
+ 
+ # -D_GNU_SOURCE : Use GNU extensions, where possible
+ # -D_BSD_SOURCE : Use functions derived from 4.3 BSD Unix rather than POSIX.1
+-DEFS = -D_BSD_SOURCE -D_GNU_SOURCE
++#DEFS = -D_BSD_SOURCE -D_GNU_SOURCE
++DEFS = -D_DEFAULT_SOURCE -D_GNU_SOURCE
+ 
+ ##
+ # Compilation flags for different platforms. 

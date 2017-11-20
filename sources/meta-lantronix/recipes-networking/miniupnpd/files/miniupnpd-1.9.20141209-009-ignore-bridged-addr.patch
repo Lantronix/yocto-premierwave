@@ -1,0 +1,134 @@
+--- miniupnpd-1.9.20141209_orig/getifaddr.c	2015-06-26 17:05:18.723418006 -0700
++++ miniupnpd-1.9.20141209_mod/getifaddr.c	2015-06-26 17:07:17.187411378 -0700
+@@ -25,6 +25,36 @@
+ #include <ifaddrs.h>
+ #endif
+ 
++#ifdef ENABLE_IPV6
++#include <sys/ioctl.h>
++#include <net/if.h>
++#include <linux/sockios.h>
++#include <linux/ethtool.h>
++#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
++static int getMACAddress(const char* ifname,unsigned char *addr, int len)
++{
++    int sockFd;
++    struct ifreq ifr;
++    sockFd = socket(AF_INET, SOCK_DGRAM, 0);
++    if(sockFd < 0)
++    {
++        return -1;
++    }
++    memset(&ifr, 0, sizeof(ifr));
++    strcpy(ifr.ifr_name, ifname);
++    if(ioctl(sockFd, SIOCGIFHWADDR, &ifr) >= 0)
++    {
++        memcpy(addr, ifr.ifr_hwaddr.sa_data, MIN(len, IFHWADDRLEN));
++    }
++    else
++    {
++        memset(addr, 0, MIN(IFHWADDRLEN, len));
++    }
++    close(sockFd);
++    return 0;
++}
++#endif
++
+ int
+ getifaddr(const char * ifname, char * buf, int len,
+           struct in_addr * addr, struct in_addr * mask)
+@@ -181,13 +211,37 @@
+ #ifdef ENABLE_IPV6
+ 		case AF_INET6:
+ 			tmpaddr = (const struct sockaddr_in6 *)ife->ifa_addr;
+-			if(!IN6_IS_ADDR_LOOPBACK(&tmpaddr->sin6_addr))
+-			{
+-				memcpy(addr->s6_addr,
+-				       &tmpaddr->sin6_addr,
+-				       16);
+-				found = 1;
+-			}
++			if(IN6_IS_ADDR_LOOPBACK(&tmpaddr->sin6_addr))continue;
++			if(!IN6_IS_ADDR_LINKLOCAL(&tmpaddr->sin6_addr))continue;//use link local only?
++            if(IN6_IS_ADDR_LINKLOCAL(&tmpaddr->sin6_addr))
++            {
++                if(strstr(ifname,"wlan"))//wlan interface only
++                {
++                    char ip_address[INET6_ADDRSTRLEN];
++                    inet_ntop(ife->ifa_addr->sa_family, (void *)&tmpaddr->sin6_addr, ip_address, sizeof(ip_address));
++                    //ignore the one for bridged client
++                    unsigned char mac[6];
++                    memset(mac,0,sizeof(mac));
++                    getMACAddress("eth0",mac, 6);
++                    mac[5]+=1;//wireless real MAC
++                    mac[0]^=2;//IPv6 EUI-64 bit address
++                    char real_ip[INET6_ADDRSTRLEN];
++                    snprintf(real_ip,sizeof(real_ip),"fe80::%02x%02x:%02xff:fe%02x:%02x%02x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
++                    struct in6_addr addr6;
++                    memset(&addr6,0,sizeof(addr6));
++                    inet_pton(AF_INET6, real_ip, &addr6);
++                    if(0!=memcmp(&addr6,&tmpaddr->sin6_addr,sizeof(struct in6_addr)))
++                    {
++                        //this is not our real link local address, dont add to ebtables
++                        //syslog(LOG_ERR,"interface %s IN6_IS_ADDR_LINKLOCAL: %s, expected: %s",ifname,ip_address,real_ip);
++                        continue;
++                    }
++                }
++            }
++            memcpy(addr->s6_addr,
++                   &tmpaddr->sin6_addr,
++                   16);
++            found = 1;
+ 			break;
+ #endif /* ENABLE_IPV6 */
+ 		}
+@@ -240,15 +294,40 @@
+ 		if(ife->ifa_addr->sa_family == AF_INET6)
+ 		{
+ 			addr = (const struct sockaddr_in6 *)ife->ifa_addr;
+-			if(!IN6_IS_ADDR_LOOPBACK(&addr->sin6_addr))
+-			{
+-				inet_ntop(ife->ifa_addr->sa_family,
+-				          &addr->sin6_addr,
+-				          buf, sizeof(buf));
+-				/* add brackets */
+-				snprintf(dst, n, "[%s]", buf);
+-				r = 1;
+-			}
++			if(IN6_IS_ADDR_LOOPBACK(&addr->sin6_addr))continue;
++			if(!IN6_IS_ADDR_LINKLOCAL(&addr->sin6_addr))continue;//use link local only?
++            if(IN6_IS_ADDR_LINKLOCAL(&addr->sin6_addr))
++            {
++                if(strstr(ifname,"wlan"))//wlan interface only
++                {
++                    char ip_address[INET6_ADDRSTRLEN];
++                    inet_ntop(ife->ifa_addr->sa_family, (void *)&addr->sin6_addr, ip_address, sizeof(ip_address));
++                    //ignore the one for bridged client
++                    unsigned char mac[6];
++                    memset(mac,0,sizeof(mac));
++                    getMACAddress("eth0",mac, 6);
++                    mac[5]+=1;//wireless real MAC
++                    mac[0]^=2;//IPv6 EUI-64 bit address
++                    char real_ip[INET6_ADDRSTRLEN];
++                    snprintf(real_ip,sizeof(real_ip),"fe80::%02x%02x:%02xff:fe%02x:%02x%02x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
++                    struct in6_addr addr6;
++                    memset(&addr6,0,sizeof(addr6));
++                    inet_pton(AF_INET6, real_ip, &addr6);
++                    if(0!=memcmp(&addr6,&addr->sin6_addr,sizeof(struct in6_addr)))
++                    {
++                        //this is not our real link local address, dont add to ebtables
++                        //syslog(LOG_ERR,"interface %s IN6_IS_ADDR_LINKLOCAL: %s, expected: %s",ifname,ip_address,real_ip);
++                        continue;
++                    }
++                }
++            }
++            inet_ntop(ife->ifa_addr->sa_family,
++                      &addr->sin6_addr,
++                      buf, sizeof(buf));
++            /* add brackets */
++            snprintf(dst, n, "[%s]", buf);
++            r = 1;
++            break;
+ 		}
+ 	}
+ 	freeifaddrs(ifap);
