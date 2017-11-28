@@ -4,9 +4,7 @@
 These instructions show how Customer can use PremierWave BSP Yocto to create a ROM image for pw2050 or sgx5150 that will include their own applications/configuration.
 
 ## Prerequisites
-Linux OS (Ubuntu 16.04 was tested).
-Full Yocto Project Development on a virtual machine is not recommended.
-Install necessary packages:
+Linux OS (Ubuntu 16.04 was tested).  Full Yocto Project Development on a virtual machine is not recommended.  Install necessary packages:
 ```
 sudo apt-get install gawk wget git-core diffstat unzip texinfo gcc-multilib \
      build-essential chrpath socat libsdl1.2-dev xterm
