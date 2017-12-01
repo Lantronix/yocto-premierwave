@@ -15,4 +15,3 @@ rm -f /ltrx_private/ifconfig-wlan0-output
 rm -f /ltrx_private/ifconfig-eth0-avahi-output
 rm -f /ltrx_private/ifconfig-wlan0-avahi-output
 rm -f /ltrx_private/gw_*
-

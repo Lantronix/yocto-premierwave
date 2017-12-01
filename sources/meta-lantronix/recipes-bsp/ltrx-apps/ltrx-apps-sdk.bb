@@ -49,6 +49,9 @@ RDEPENDS_${PN} += "zeromq"
 
 INSANE_SKIP_${PN} += "dev-deps dev-so"
 
+# this is needed to copy *.so to rootfs
+FILES_SOLIBSDEV = ""
+
 FILES_${PN} += "/http ${libdir}"
 FILES_${PN} += "/lib/modules/3.10.0/extra/"
 FILES_${PN} += "/usr/share/dbus-1/system-services/"
