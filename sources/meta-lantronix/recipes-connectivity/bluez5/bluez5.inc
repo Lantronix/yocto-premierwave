@@ -53,7 +53,7 @@ sed -i '/lcrypto/a\lib/.libs/libbtgatt-server.so: $(tools_btgatt_server_lib_OBEC
 }
 
 do_compile_append() {
-	sed -i '/bin_PROGRAMS =/c\bin_PROGRAMS = tools/btgatt-server$(EXTEXT) tools/hciattach$(EXEEXT) tools/hciconfig$(EXEEXT) tools/hcitool$(EXEEXT)' Makefile
+	sed -i '/bin_PROGRAMS =/c\bin_PROGRAMS = tools/btgatt-server$(EXTEXT) tools/hciattach$(EXEEXT) tools/hciconfig$(EXEEXT) tools/hcitool$(EXEEXT) tools/bdaddr$(EXTEXT)' Makefile
 	sed -i '/$(am__EXEEXT_4)/c\' Makefile
 	sed -i '/am__EXEEXT_1 =/c\am__EXEEXT_1 = client/bluetoothctl$(EXEEXT)	tools/btgatt-server$(EXTEXT)	lib/.libs/libbtgatt-server.so' Makefile
 	sed -i '/lib_LTLIBRARIES =/c\lib_LTLIBRARIES = lib/.libs/libbtgatt-server.so lib/.libs/libbluetooth.so' Makefile

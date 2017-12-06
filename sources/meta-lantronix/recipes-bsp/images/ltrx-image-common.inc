@@ -17,6 +17,7 @@ IMAGE_INSTALL += "avahi-daemon"
 IMAGE_INSTALL += "avahi-dnsconfd"
 IMAGE_INSTALL += "avahi-utils"
 IMAGE_INSTALL += "bash"
+IMAGE_INSTALL += "bluez5"
 IMAGE_INSTALL += "bridge-utils"
 IMAGE_INSTALL += "busybox"
 IMAGE_INSTALL += "bzip2"
@@ -247,6 +248,25 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/lib/libX11.so.6.3.0
     rm -rf ${IMAGE_ROOTFS}/usr/lib/libperl.so.5.22.0
     rm -rf ${IMAGE_ROOTFS}/usr/include/*
+    rm -rf ${IMAGE_ROOTFS}/etc/ipsec.d/examples/
+    rm -rf ${IMAGE_ROOTFS}/usr/share/locale/*
+    rm -rf ${IMAGE_ROOTFS}/usr/share/X11
+    rm -rf ${IMAGE_ROOTFS}/usr/share/aclocal
+    rm -rf ${IMAGE_ROOTFS}/usr/share/man
+    rm -rf ${IMAGE_ROOTFS}/usr/share/bridge-utils
+    rm -rf ${IMAGE_ROOTFS}/usr/share/ca-certificates
+    rm -rf ${IMAGE_ROOTFS}/usr/share/dict
+    rm -rf ${IMAGE_ROOTFS}/usr/share/info
+    rm -rf ${IMAGE_ROOTFS}/usr/share/misc
+    rm -rf ${IMAGE_ROOTFS}/usr/share/pci.ids.gz
+    rm -rf ${IMAGE_ROOTFS}/usr/share/tabset
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/perl
+    rm -rf ${IMAGE_ROOTFS}//usr/lib/arm-poky-linux*
+
+    find ${IMAGE_ROOTFS}/usr/lib/ipsec -name '*.old' | xargs rm -f
+    find ${IMAGE_ROOTFS}/usr/libexec/ipsec/  -name '*.old' | xargs rm -f
+    find ${IMAGE_ROOTFS}/usr/lib/  -name '*.o' | xargs rm -f
+    find ${IMAGE_ROOTFS}/usr/lib/  -name '*.a' | xargs rm -f
 
     mkdir -p ${IMAGE_ROOTFS}/root
 

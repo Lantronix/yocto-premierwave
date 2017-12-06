@@ -1,0 +1,53 @@
+diff -Naur avahi-0.6.31/avahi-daemon/static-services.c ltrx-avahi-0.6.31/avahi-daemon/static-services.c
+--- avahi-0.6.31/avahi-daemon/static-services.c	2010-08-25 17:51:39.002153001 -0700
++++ ltrx-avahi-0.6.31/avahi-daemon/static-services.c	2015-06-05 18:38:36.428561984 -0700
+@@ -181,6 +181,15 @@
+     avahi_free(g);
+ }
+ 
++static const char *wildcard_name(const char *name) {
++    char label[AVAHI_LABEL_MAX];
++    const char *p;
++
++    p = avahi_server_get_host_name(avahi_server);
++    avahi_unescape_label(&p, label, sizeof(label));
++    return replacestr(name, "%h", label);
++}
++
+ static void entry_group_callback(AvahiServer *s, AVAHI_GCC_UNUSED AvahiSEntryGroup *eg, AvahiEntryGroupState state, void* userdata) {
+     StaticServiceGroup *g = userdata;
+ 
+@@ -194,6 +203,12 @@
+ 
+             remove_static_service_group_from_server(g);
+ 
++            if (g->replace_wildcards) { 
++                char *m = avahi_alternative_service_name(g->name);
++                free(g->name);
++                g->name = m;
++                g->chosen_name = wildcard_name(g->name);
++            }
+             n = avahi_alternative_service_name(g->chosen_name);
+             avahi_free(g->chosen_name);
+             g->chosen_name = n;
+@@ -232,17 +247,10 @@
+ 
+         avahi_free(g->chosen_name);
+ 
+-        if (g->replace_wildcards) {
+-            char label[AVAHI_LABEL_MAX];
+-            const char *p;
+-
+-            p = avahi_server_get_host_name(avahi_server);
+-            avahi_unescape_label(&p, label, sizeof(label));
+-
+-            g->chosen_name = replacestr(g->name, "%h", label);
+-        } else
++        if (g->replace_wildcards)
++            g->chosen_name = wildcard_name(g->name);
++        else
+             g->chosen_name = avahi_strdup(g->name);
+-
+     }
+ 
+     if (!g->entry_group)
