@@ -63,10 +63,9 @@ do_install() {
 	install -m 0755 dropbearmulti ${D}${sbindir}/
 	ln -s ${sbindir}/dropbearmulti ${D}${bindir}/dbclient
 	
-	for i in ${SBINCOMMANDS}
-	do
-		ln -s ./dropbearmulti ${D}${sbindir}/$i
-	done
+		ln -s  ${sbindir}/dropbearmulti ${D}${sbindir}/dropbear
+		ln -s  ${sbindir}/dropbearmulti ${D}${bindir}/dropbearkey
+		ln -s  ${sbindir}/dropbearmulti ${D}${bindir}/dropbearconvert
 	sed -e 's,/etc,${sysconfdir},g' \
 		-e 's,/usr/sbin,${sbindir},g' \
 		-e 's,/var,${localstatedir},g' \
