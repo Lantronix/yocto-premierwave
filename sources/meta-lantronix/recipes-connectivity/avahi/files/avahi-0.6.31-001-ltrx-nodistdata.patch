@@ -1,0 +1,21 @@
+diff -Naur avahi-0.6.31/avahi-daemon/Makefile.in avahi-0.6.31-ltrx/avahi-daemon/Makefile.in
+--- avahi-0.6.31/avahi-daemon/Makefile.in	2012-02-14 14:36:36.663058984 -0800
++++ avahi-0.6.31-ltrx/avahi-daemon/Makefile.in	2015-03-29 06:10:17.767923391 -0700
+@@ -1404,7 +1404,7 @@
+ install-data-am: install-data-local install-dist_dbusserviceDATA \
+ 	install-dist_dbussystemservicesDATA \
+ 	install-dist_introspectionDATA install-dist_pkgdataDATA \
+-	install-dist_serviceDATA install-pkgsysconfDATA \
++	install-pkgsysconfDATA \
+ 	install-systemdsystemunitDATA
+ 
+ install-dvi: install-dvi-am
+@@ -1454,7 +1454,7 @@
+ uninstall-am: uninstall-dist_dbusserviceDATA \
+ 	uninstall-dist_dbussystemservicesDATA \
+ 	uninstall-dist_introspectionDATA uninstall-dist_pkgdataDATA \
+-	uninstall-dist_serviceDATA uninstall-pkgsysconfDATA \
++	uninstall-pkgsysconfDATA \
+ 	uninstall-sbinPROGRAMS uninstall-systemdsystemunitDATA
+ 
+ .MAKE: install-am install-strip

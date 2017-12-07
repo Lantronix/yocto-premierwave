@@ -1,0 +1,161 @@
+diff -Naur avahi-0.6.31/avahi-core/core.h ltrx-avahi-0.6.31/avahi-core/core.h
+--- avahi-0.6.31/avahi-core/core.h	2010-08-25 17:51:38.984153000 -0700
++++ ltrx-avahi-0.6.31/avahi-core/core.h	2015-05-06 16:02:50.418827204 -0700
+@@ -69,6 +69,10 @@
+     unsigned n_cache_entries_max;     /**< Maximum number of cache entries per interface */
+     AvahiUsec ratelimit_interval;     /**< If non-zero, rate-limiting interval parameter. */
+     unsigned ratelimit_burst;         /**< If ratelimit_interval is non-zero, rate-limiting burst parameter. */
++#ifdef ENABLE_DNS_ADDITIONAL_RR
++    int enable_dns_ar;
++    uint8_t dns_ar_types[10];         /** max of AVAHI_DNS_TYPE_XXX enum */
++#endif
+ } AvahiServerConfig;
+ 
+ /** Allocate a new mDNS responder object. */
+diff -Naur avahi-0.6.31/avahi-core/server.c ltrx-avahi-0.6.31/avahi-core/server.c
+--- avahi-0.6.31/avahi-core/server.c	2011-03-10 17:11:57.005249090 -0800
++++ ltrx-avahi-0.6.31/avahi-core/server.c	2015-05-06 16:04:28.106306280 -0700
+@@ -367,6 +367,15 @@
+     assert(!legacy_unicast || (a && port > 0 && p));
+ 
+     if (legacy_unicast) {
++#ifdef ENABLE_DNS_ADDITIONAL_RR
++        struct ar {
++            AvahiRecord *r;
++            struct ar *next;
++        };
++        struct ar *arlist_head = NULL;
++        struct ar **arlist_tail = &arlist_head;
++        int defer;
++#endif
+         AvahiDnsPacket *reply;
+         AvahiRecord *r;
+ 
+@@ -377,17 +386,69 @@
+ 
+             append_aux_records_to_list(s, i, r, 0);
+ 
++#ifdef ENABLE_DNS_ADDITIONAL_RR
++            defer = 0;
++            if (s->config.enable_dns_ar) {
++                unsigned n;
++                for (n = 0; n < sizeof(s->config.dns_ar_types); n++) {
++                    if (r->key->type == s->config.dns_ar_types[n]) {
++                        defer = 1;
++                        break;
++                    }
++                }
++            }
++
++            if (defer) {
++                struct ar *ar = calloc(sizeof(*ar), 1);
++                if (ar)
++                {
++                    ar->r = r;
++                    *arlist_tail = ar;
++                    ar->next = 0;
++                    arlist_tail = &ar->next;
++                }
++            } else
++#endif
+             if (avahi_dns_packet_append_record(reply, r, 0, 10))
+                 avahi_dns_packet_inc_field(reply, AVAHI_DNS_FIELD_ANCOUNT);
+             else {
+                 char *t = avahi_record_to_string(r);
+-                avahi_log_warn("Record [%s] not fitting in legacy unicast packet, dropping.", t);
++                avahi_log_warn("Record not fitting in legacy unicast packet, dropping:");
++                avahi_log_warn("%s", t);
+                 avahi_free(t);
+             }
+-
++#ifdef ENABLE_DNS_ADDITIONAL_RR
++            if (! defer)
++#endif
+             avahi_record_unref(r);
+         }
+ 
++#ifdef ENABLE_DNS_ADDITIONAL_RR
++        if (arlist_head)
++        {
++            struct ar *ar;
++            avahi_log_debug("Sending additional resource records");
++            for (ar = arlist_head; ar; )
++            {
++                struct ar *sar = ar;
++                if (avahi_dns_packet_append_record(reply, ar->r, 0, 10)) {
++                    if (avahi_dns_packet_get_field(reply, AVAHI_DNS_FIELD_ANCOUNT) == 0)
++                        avahi_dns_packet_inc_field(reply, AVAHI_DNS_FIELD_ANCOUNT);
++                    else
++                        avahi_dns_packet_inc_field(reply, AVAHI_DNS_FIELD_ARCOUNT);
++                }
++                else {
++                    char *t = avahi_record_to_string(ar->r);
++                    avahi_log_warn("Record [%s] not fitting in legacy unicast packet, dropping.", t);
++                    avahi_free(t);
++                }
++                avahi_record_unref(ar->r);
++                ar = ar->next;
++                free(sar);
++            }
++        }
++#endif
++
+         if (avahi_dns_packet_get_field(reply, AVAHI_DNS_FIELD_ANCOUNT) != 0)
+             avahi_interface_send_packet_unicast(i, reply, a, port);
+ 
+diff -Naur avahi-0.6.31/avahi-daemon/main.c ltrx-avahi-0.6.31/avahi-daemon/main.c
+--- avahi-0.6.31/avahi-daemon/main.c	2010-11-17 19:00:26.288465933 -0800
++++ ltrx-avahi-0.6.31/avahi-daemon/main.c	2015-05-06 16:02:50.418827204 -0700
+@@ -725,6 +725,38 @@
+ 
+                     c->n_entries_per_entry_group_max = k;
+ #endif
++#ifdef ENABLE_DNS_ADDITIONAL_RR
++                } else if (strcasecmp(p->key, "enable-dns-ar") == 0) {
++                    c->server_config.enable_dns_ar = is_yes(p->value);
++                } else if (strcasecmp(p->key, "dns-force-ar-types") == 0) {
++                    char **e, **t;
++                    int i;
++
++                    e = avahi_split_csv(p->value);
++
++                    for (t = e, i = 0; *t; t++, i++) {
++
++                        if (strcasecmp(*t, "A") == 0)
++                            c->server_config.dns_ar_types[i] = AVAHI_DNS_TYPE_A;
++                        else if (strcasecmp(*t, "NS") == 0)
++                            c->server_config.dns_ar_types[i] = AVAHI_DNS_TYPE_NS;
++                        else if (strcasecmp(*t, "CNAME") == 0)
++                            c->server_config.dns_ar_types[i] = AVAHI_DNS_TYPE_CNAME;
++                        else if (strcasecmp(*t, "SOA") == 0)
++                            c->server_config.dns_ar_types[i] = AVAHI_DNS_TYPE_SOA;
++                        else if (strcasecmp(*t, "HINFO") == 0)
++                            c->server_config.dns_ar_types[i] = AVAHI_DNS_TYPE_HINFO;
++                        else if (strcasecmp(*t, "MX") == 0)
++                            c->server_config.dns_ar_types[i] = AVAHI_DNS_TYPE_MX;
++                        else if (strcasecmp(*t, "TXT") == 0)
++                            c->server_config.dns_ar_types[i] = AVAHI_DNS_TYPE_TXT;
++                        else if (strcasecmp(*t, "AAAA") == 0)
++                            c->server_config.dns_ar_types[i] = AVAHI_DNS_TYPE_AAAA;
++                        else if (strcasecmp(*t, "SRV") == 0)
++                            c->server_config.dns_ar_types[i] = AVAHI_DNS_TYPE_SRV;
++                    }
++                    avahi_strfreev(e);
++#endif
+                 } else {
+                     avahi_log_error("Invalid configuration key \"%s\" in group \"%s\"\n", p->key, g->name);
+                     goto finish;
+diff -Naur avahi-0.6.31/config.h.in ltrx-avahi-0.6.31/config.h.in
+--- avahi-0.6.31/config.h.in	2012-02-14 14:40:25.971841726 -0800
++++ ltrx-avahi-0.6.31/config.h.in	2015-05-06 16:02:50.418827204 -0700
+@@ -27,6 +27,10 @@
+ /* Define if SSP C++ support is enabled. */
+ #undef ENABLE_SSP_CXX
+ 
++/* Define to enable use of DNS additional records section; added to support
++   weird Mopria restriction */
++#define ENABLE_DNS_ADDITIONAL_RR
++
+ /* Gettext package */
+ #undef GETTEXT_PACKAGE
+ 

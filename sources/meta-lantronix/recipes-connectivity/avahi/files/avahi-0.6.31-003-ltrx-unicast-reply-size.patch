@@ -1,0 +1,58 @@
+diff -Naur avahi-0.6.31/avahi-core/core.h ltrx-avahi-0.6.31/avahi-core/core.h
+--- avahi-0.6.31/avahi-core/core.h	2015-05-06 16:06:22.073036286 -0700
++++ ltrx-avahi-0.6.31/avahi-core/core.h	2015-05-06 16:08:11.139993103 -0700
+@@ -73,6 +73,7 @@
+     int enable_dns_ar;
+     uint8_t dns_ar_types[10];         /** max of AVAHI_DNS_TYPE_XXX enum */
+ #endif
++    unsigned max_unicast_reply_size;
+ } AvahiServerConfig;
+ 
+ /** Allocate a new mDNS responder object. */
+diff -Naur avahi-0.6.31/avahi-core/server.c ltrx-avahi-0.6.31/avahi-core/server.c
+--- avahi-0.6.31/avahi-core/server.c	2015-05-06 16:06:22.073036286 -0700
++++ ltrx-avahi-0.6.31/avahi-core/server.c	2015-05-06 16:09:31.524278617 -0700
+@@ -379,7 +379,7 @@
+         AvahiDnsPacket *reply;
+         AvahiRecord *r;
+ 
+-        if (!(reply = avahi_dns_packet_new_reply(p, 512 + AVAHI_DNS_PACKET_EXTRA_SIZE /* unicast DNS maximum packet size is 512 */ , 1, 1)))
++        if (!(reply = avahi_dns_packet_new_reply(p, s->config.max_unicast_reply_size + AVAHI_DNS_PACKET_EXTRA_SIZE, 1, 1)))
+             return; /* OOM */
+ 
+         while ((r = avahi_record_list_next(s->record_list, NULL, NULL, NULL))) {
+@@ -1662,6 +1662,7 @@
+     c->n_cache_entries_max = AVAHI_DEFAULT_CACHE_ENTRIES_MAX;
+     c->ratelimit_interval = 0;
+     c->ratelimit_burst = 0;
++    c->max_unicast_reply_size = 512;
+ 
+     return c;
+ }
+@@ -1719,6 +1720,7 @@
+     ret->browse_domains = browse;
+     ret->allow_interfaces = allow;
+     ret->deny_interfaces = deny;
++    ret->max_unicast_reply_size = c->max_unicast_reply_size <= 1400 ? c->max_unicast_reply_size : 512;
+ 
+     return ret;
+ }
+diff -Naur avahi-0.6.31/avahi-daemon/main.c ltrx-avahi-0.6.31/avahi-daemon/main.c
+--- avahi-0.6.31/avahi-daemon/main.c	2015-05-06 16:06:22.073036286 -0700
++++ ltrx-avahi-0.6.31/avahi-daemon/main.c	2015-05-06 16:10:28.333684223 -0700
+@@ -757,6 +757,15 @@
+                     }
+                     avahi_strfreev(e);
+ #endif
++                } else if (strcasecmp(p->key, "unicast-reply-size-max") == 0) {
++                    unsigned k;
++
++                    if (parse_unsigned(p->value, &k) < 0) {
++                        avahi_log_error("Invalid unicast-reply-size-max setting %s", p->value);
++                        goto finish;
++                    }
++                    c->server_config.max_unicast_reply_size = k;
++
+                 } else {
+                     avahi_log_error("Invalid configuration key \"%s\" in group \"%s\"\n", p->key, g->name);
+                     goto finish;

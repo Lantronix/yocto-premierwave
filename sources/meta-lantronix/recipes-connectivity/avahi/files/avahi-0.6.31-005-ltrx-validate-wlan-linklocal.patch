@@ -1,0 +1,126 @@
+diff -Naur avahi-0.6.31/avahi-core/iface.c avahi-0.6.31-ltrx/avahi-core/iface.c
+--- avahi-0.6.31/avahi-core/iface.c	2010-08-25 17:51:38.987153000 -0700
++++ avahi-0.6.31-ltrx/avahi-core/iface.c	2015-09-04 17:27:38.287970399 -0700
+@@ -42,6 +42,102 @@
+ #include "multicast-lookup.h"
+ #include "querier.h"
+ 
++#define VALIDATE_WLAN_LINKLOCAL
++#ifdef VALIDATE_WLAN_LINKLOCAL
++#include <sys/socket.h>
++#include <sys/ioctl.h>
++#include <linux/if.h>
++
++#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
++#define MAX_NETS_ETHERNET 1
++#define MAX_NETS_WLAN 1
++#define NETS_ETHERNET_START (0)
++#define NETS_WLAN_START (NETS_ETHERNET_START + MAX_NETS_ETHERNET)
++
++static const char *net_get_interface_name(uint32_t netno) {
++    static int s_interfaceNamesInitialized = 0;
++    static char s_interfaceNames[MAX_NETS_ETHERNET + MAX_NETS_WLAN][8];
++    if  (! s_interfaceNamesInitialized) {
++        int idx;
++        for(idx = 0; idx < MAX_NETS_ETHERNET + MAX_NETS_WLAN
++        ; ++idx) {
++#if MAX_NETS_ETHERNET > 0
++            if((idx >= NETS_ETHERNET_START) && (idx < NETS_ETHERNET_START+MAX_NETS_ETHERNET)) {
++                snprintf(
++                    s_interfaceNames[idx], sizeof(s_interfaceNames[idx]),
++                        "eth%u",idx - NETS_ETHERNET_START);
++            }
++#endif
++#if MAX_NETS_WLAN > 0
++            if((idx >= NETS_WLAN_START) && (idx < NETS_WLAN_START + MAX_NETS_WLAN)) {
++                snprintf(
++                    s_interfaceNames[idx], sizeof(s_interfaceNames[idx]),
++                    "wlan%u",idx - NETS_WLAN_START);
++            }
++#endif
++        }
++        s_interfaceNamesInitialized = 1;
++    }
++    if (netno < MAX_NETS_ETHERNET + MAX_NETS_WLAN) {
++        return s_interfaceNames[(unsigned int)netno];
++    }
++    return "";
++}
++
++static int get_mac_address(uint32_t ifc_index,unsigned char *addr, int len) {
++    int sockFd;
++    struct ifreq ifr;
++    if (ifc_index>MAX_NETS_ETHERNET+MAX_NETS_WLAN)
++        ifc_index=NETS_ETHERNET_START;
++    sockFd = socket(AF_INET, SOCK_DGRAM, 0);
++    if (sockFd < 0) {
++        return -1;
++    }
++    memset(&ifr, 0, sizeof(ifr));
++    strcpy(ifr.ifr_name, (char*)net_get_interface_name(ifc_index));
++    if(ioctl(sockFd, SIOCGIFHWADDR, &ifr) >= 0) {
++        memcpy(addr, ifr.ifr_hwaddr.sa_data, MIN(len, IFHWADDRLEN));
++    } else {
++        memset(addr, 0, MIN(IFHWADDRLEN, len));
++    }
++    close(sockFd);
++    return 0;
++}
++
++static int is_valid_wlan_linklocal_address(const char* addr, const size_t addr_len) {
++    if (!addr) return 0;
++    if (addr_len == 0) return 0;
++
++    if (strncasecmp(addr, "fe80", strlen("fe80")) != 0)
++        return 1;
++
++    unsigned char mac[6];
++    memset(mac,0,sizeof(mac));
++    get_mac_address(NETS_ETHERNET_START,mac, 6);
++    mac[5]+=1;  /* this is wlan0 real MAC */
++    mac[0]^=2;
++    char real_link_local[INET6_ADDRSTRLEN];
++    snprintf(real_link_local,sizeof(real_link_local),"fe80::%02x%02x:%02xff:fe%02x:%02x%02x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
++    char input_addr[INET6_ADDRSTRLEN];
++    memset(input_addr,0,sizeof(input_addr));
++    char* netmask=strstr(addr,"/");
++    if(netmask)
++        strncpy(input_addr,addr,netmask-addr);
++    else
++        strncpy(input_addr,addr,sizeof(input_addr));
++    struct in6_addr local_addr6;
++    struct in6_addr got_addr6;
++    if (1==inet_pton(AF_INET6, real_link_local, &local_addr6) && 1==inet_pton(AF_INET6, input_addr, &got_addr6)) {
++        if(0!=memcmp(&local_addr6,&got_addr6,sizeof(struct in6_addr))) {
++            /* this is not our real link local address */
++            avahi_log_info("is_valid_wlan_linklocal_address [%s], expecting [%s]",input_addr,real_link_local);
++            return 0;
++        }
++    }
++    return 1;
++}
++#endif
++
+ void avahi_interface_address_update_rrs(AvahiInterfaceAddress *a, int remove_rrs) {
+     AvahiInterfaceMonitor *m;
+ 
+@@ -71,6 +167,9 @@
+                 (a->interface->protocol == AVAHI_PROTO_INET6 && m->server->config.publish_aaaa_on_ipv4) ? AVAHI_PROTO_UNSPEC : a->interface->protocol;
+ 
+             avahi_address_snprint(t, sizeof(t), &a->address);
++#ifdef VALIDATE_WLAN_LINKLOCAL
++            if (is_valid_wlan_linklocal_address(t, strlen(t))) {
++#endif
+             avahi_log_info("Registering new address record for %s on %s.%s.", t, a->interface->hardware->name, p == AVAHI_PROTO_UNSPEC ? "*" : avahi_proto_to_string(p));
+ 
+             if (avahi_server_add_address(m->server, a->entry_group, a->interface->hardware->index, p, 0, NULL, &a->address) < 0) {
+@@ -81,6 +180,9 @@
+             }
+ 
+             avahi_s_entry_group_commit(a->entry_group);
++#ifdef VALIDATE_WLAN_LINKLOCAL
++            }
++#endif
+         }
+     } else {
+ 
