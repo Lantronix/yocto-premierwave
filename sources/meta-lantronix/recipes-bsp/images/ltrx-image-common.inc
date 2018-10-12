@@ -17,7 +17,6 @@ IMAGE_INSTALL += "avahi-daemon"
 IMAGE_INSTALL += "avahi-dnsconfd"
 IMAGE_INSTALL += "avahi-utils"
 IMAGE_INSTALL += "bash"
-IMAGE_INSTALL += "bluez5"
 IMAGE_INSTALL += "bridge-utils"
 IMAGE_INSTALL += "busybox"
 IMAGE_INSTALL += "bzip2"
@@ -48,9 +47,7 @@ IMAGE_INSTALL += "libwebsockets"
 IMAGE_INSTALL += "mii-diag"
 IMAGE_INSTALL += "mrouted"
 IMAGE_INSTALL += "ncurses"
-IMAGE_INSTALL += "ndisc6"
 IMAGE_INSTALL += "openssl"
-IMAGE_INSTALL += "openswan"
 IMAGE_INSTALL += "paho-mqtt.embedded-c"
 IMAGE_INSTALL += "python"
 IMAGE_INSTALL += "python-pyserial"
@@ -62,12 +59,12 @@ IMAGE_INSTALL += "python-configparser"
 IMAGE_INSTALL += "python-psutil"
 IMAGE_INSTALL += "python-werkzeug"
 IMAGE_INSTALL += "python-flask"
+IMAGE_INSTALL += "python-numpy"
 IMAGE_INSTALL += "python-setuptools"
 IMAGE_INSTALL += "readline"
 IMAGE_INSTALL += "rng-tools"
 IMAGE_INSTALL += "spawn-fcgi"
 IMAGE_INSTALL += "tar"
-IMAGE_INSTALL += "tcpdump"
 IMAGE_INSTALL += "tzdata"
 IMAGE_INSTALL += "u-boot-fw-utils"
 IMAGE_INSTALL += "u-boot-mkimage"
@@ -139,7 +136,6 @@ EOF
     chmod 4755 ${IMAGE_ROOTFS}/usr/sbin/wpa_cli
     chmod 4755 ${IMAGE_ROOTFS}/bin/ser_con
     chmod 4755 ${IMAGE_ROOTFS}/usr/bin/traceroute.traceroute
-    chmod 4755 ${IMAGE_ROOTFS}/usr/sbin/tcpdump
     chmod 4755 ${IMAGE_ROOTFS}/bin/ping.iputils
     chmod 4755 ${IMAGE_ROOTFS}/bin/ping6.iputils
     chmod 4755 ${IMAGE_ROOTFS}/sbin/ebtables
@@ -361,6 +357,7 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/oldnumeric/tests/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/plugins/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/mibs/
     find ${IMAGE_ROOTFS}/usr/lib/ipsec -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/libexec/ipsec/  -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/lib/  -name '*.o' | xargs rm -f
