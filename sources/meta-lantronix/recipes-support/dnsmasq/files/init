@@ -11,8 +11,9 @@ set -e
 case "$1" in
     start)
         echo -n "starting $DESC: $NAME... "
-	test -d /var/lib/misc/ || mkdir /var/lib/misc/
-	start-stop-daemon -S -x $DAEMON -- $ARGS
+	logger "starting meta-lantronix $DESC: $NAME, $ARGS "
+	#test -d /var/lib/misc/ || mkdir /var/lib/misc/
+	#start-stop-daemon -S -x $DAEMON -- $ARGS
 	echo "done."
 	;;
     stop)
