@@ -23,6 +23,9 @@ null::sysinit:/bin/echo > /dev/mdev.seq
 null::sysinit:/sbin/sysctl -w kernel.hotplug=/sbin/mdev
 null::sysinit:/sbin/mdev -s
 
+null::sysinit:/sbin/devmem 0xfffff860 32 0x00040000
+null::sysinit:/sbin/devmem 0xfffff894 32 0x00040000
+
 # bring up radio subsystem power early
 null::sysinit:/sbin/ltrx-radio-up &
 

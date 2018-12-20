@@ -32,6 +32,9 @@ null::sysinit:/bin/echo out >/sys/class/gpio/gpio254/direction
 null::sysinit:/bin/echo 1 >/sys/class/gpio/gpio254/value
 null::sysinit:/bin/echo 0 >/sys/class/gpio/gpio249/value
 
+null::sysinit:/sbin/devmem 0xfffff860 32 0x00040000
+null::sysinit:/sbin/devmem 0xfffff894 32 0x00040000
+
 # bring up radio subsystem power early
 null::sysinit:/sbin/ltrx-radio-up &
 
