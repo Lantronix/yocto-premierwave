@@ -31,6 +31,7 @@ set +e
 #   $3 IP adddress
 
 ETH_IP_FILE="/tmp/ethipaddress"
+LTRX_NET_COMMON="/etc/sysconfig/network-scripts/ltrx-network-common.script"
 BRIDGE_CONF=/etc/brmgr-br0
 if [ -f $BRIDGE_CONF ]; then
     . $BRIDGE_CONF
@@ -79,6 +80,9 @@ if [ -x /bin/ip -o -x /sbin/ip ] ; then
                logger -p "user.debug" "avahi-autoipd script failed: ${it}"
                logger -p "user.debug" "avahi-autoipd script failed: ${oops}"
             fi
+            #run network script to update resolv.conf and routes etc.
+            . $LTRX_NET_COMMON
+            restart_l3_bridging $2 $3
             ;;
 
         CONFLICT|UNBIND|STOP)

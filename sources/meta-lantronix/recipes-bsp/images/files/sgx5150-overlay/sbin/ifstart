@@ -38,6 +38,60 @@ if [ ! -f $LTRX_NET_COMMON ]; then
 fi
 
 logger -p "user.debug" "ifstart: interface: $IFCNAME, client mac: $CLIENT_MAC"
+#if this is the LAN bridge and DHCP relay is enabled
+if [ -f /etc/sysconfig/dhcpd ]; then
+    . /etc/sysconfig/dhcpd
+    if [ "$ONBOOT" = "yes" -a "$TYPE" = "relay" -a "$IFCNAME" = "$IFNAME" ]; then
+        #LAN bridge interface
+        local INT_IF=""
+        INT_IF=$IFNAME
+        #the IP is assigned from
+        local EXT_IP=""
+        local EXT_IF=""
+        if [ -f /etc/sysconfig/network-scripts/ifcfg-vlan0 ]; then
+            . /etc/sysconfig/network-scripts/ifcfg-vlan0
+            logger -p "user.debug" "ifstart: interface: $IFCNAME, gateway: $ONBOOT, EXT_IF=$WAN_IF"
+            if [ "$ONBOOT" = "yes" ]; then
+                EXT_IP=`ip -4 addr show dev $WAN_IF 2>/dev/null | grep inet | awk '{print \$2}' | awk -F'/' '{print \$1}' | tr -d '\n'`
+                EXT_IF=$WAN_IF
+            fi
+        fi
+        logger -p "user.debug" "ifstart: interface: $IFCNAME, assign $INT_IF IP: $EXT_IP"
+        if [ "$EXT_IF" != "" -a "$INT_IF" != "" ]; then
+            #begin protected section
+            #use the same IP as the external IP for dhcprelay
+            for addr in $(ip -4 addr show dev $INT_IF | grep inet | awk '{print $2}'); do
+                ip -4 addr del $addr dev $INT_IF
+            done
+            #ifconfig $INT_IF $EXT_IP netmask 255.255.255.255
+            for addr in $(ip -4 addr show dev $EXT_IF | grep inet | awk '{print $2}' | awk -F'/' '{print $1}'); do
+                logger -p "user.debug" "ifstart: forwarding: $FORWARDING_LAYER, assign $INT_IF IP: $addr"
+                ip -4 addr add $addr/32 dev $INT_IF
+            done
+            killall dhcrelay
+            #Relay DHCP requests between clients and server
+            dhcrelay -d -a -D -id $INT_IF -iu $EXT_IF $DHCP_SERVER_IP&#for IPv4
+
+            for addr in $(ip -6 addr show dev $INT_IF scope global | grep inet6 | awk '{print $2}'); do
+                ip -6 addr del $addr dev $INT_IF scope global
+            done
+            for addr in $(ip -6 addr show dev $EXT_IF scope global | grep inet6 | awk '{print $2}' | awk -F'/' '{print $1}'); do
+                logger -p "user.debug" "ifstart: forwarding: $FORWARDING_LAYER, assign $INT_IF IP: $addr"
+                ip -6 addr add $addr/128 dev $INT_IF scope global
+            done
+            #Relay DHCPv6 requests between clients and server
+            dhcrelay -6 -d -l $INT_IF -u $EXT_IF& #for IPv6
+
+            #Proxy ARP IP bridging daemon
+            kill -9 `pidof parprouted`
+            parprouted -d $INT_IF $EXT_IF 2>&1 1>/dev/kmsg&
+            #end protected section
+        fi
+        logger -p "user.debug" "ifstart: interface: $IFCNAME completed"
+        rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
+        exit 0
+    fi
+fi
 
 if [ ! -f $IFCFILE ]; then
     logger -p "user.err" "ifstart: missing interface configuration."
@@ -102,7 +156,7 @@ fi
 
 # Interface BRIDGE_ETHDEV in bridging mode will only be used to
 # talk to a SINGLE bridged host.
-if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_ETHDEV -a $TRANSPARENT = "disabled" ] ; then
+if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_ETHDEV ] ; then
     if [ "$IPV4" = "yes" ] ; then
         if [ -e /tmp/bripaddress ] ; then
             . /tmp/bripaddress
@@ -116,6 +170,29 @@ if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_ETHDEV -a $TRANSPARENT = "disabled" ]
         fi
     fi
 fi
+
+# Interface BRIDGE_ETHDEV in bridging mode (network) will have the same IP as WLANDEV
+if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_ETHDEV -a $TRANSPARENT = "disabled" -a "$BRIDGE_MODE" = "network" ] ; then
+    logger -p "user.debug" "ifstart: transparent bridge (network) ($IFCNAME configuration)"
+    #use the same IP as the external IP
+    for addr in $(ip -4 addr show dev $IFCNAME | grep inet | awk '{print $2}'); do
+        ip -4 addr del $addr dev $IFCNAME
+    done
+    for addr in $(ip -4 addr show dev $BRIDGE_WLANDEV | grep inet | awk '{print $2}' | awk -F'/' '{print $1}'); do
+        logger -p "user.debug" "ifstart: assign $IFCNAME IP: $addr"
+        ip -4 addr add $addr/32 dev $IFCNAME
+    done
+    for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
+        ip -6 addr del $addr dev $IFCNAME scope global
+    done
+    for addr in $(ip -6 addr show dev $BRIDGE_WLANDEV scope global | grep inet6 | awk '{print $2}'  | awk -F'/' '{print $1}'); do
+        logger -p "user.debug" "ifstart: assign $IFCNAME IP: $addr"
+        ip -6 addr add $addr/128 dev $IFCNAME scope global
+    done
+    rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
+    exit 0
+fi
+
 DHCP_PID_FILE=/var/run/udhcpc.$IFCNAME.pid
 if [ -f $DHCP_PID_FILE ] ; then
     kill `cat /var/run/udhcpc.$IFCNAME.pid` 2>/dev/null
@@ -193,6 +270,7 @@ if [ "$IPV4" = "yes" ] ; then
             #run network script to update resolv.conf and routes etc.
             . $LTRX_NET_COMMON
             ltrx_start_network $IFCNAME
+            restart_l3_bridging $IFCNAME $IPADDR
         else
             /sbin/start_autoipd $IFCNAME 0 &
         fi
@@ -228,30 +306,30 @@ if [ "$IPV4" = "yes" ] ; then
         fi
         if [ ! $IFCNAME = $BRIDGE_WLANDEV -o ! -e /tmp/bridging.active -o ! $TRANSPARENT = "enabled" -o ! $NETWORKACCESS = "enabled" ] ; then
             ifconfig $IFCNAME 0.0.0.0
-            if [ -e /tmp/bridging.active -a $IFCNAME = $BRIDGE_WLANDEV ] ; then
+            if [ -e /tmp/bridging.active -a $IFCNAME = $BRIDGE_WLANDEV -a "$BRIDGE_MODE" = "host" ] ; then
                 # Enable DHCP interception. TBD: should we add the rules here or before bringing up the bridge????
                 ebtables -t broute -A BROUTING --concurrent -p 0x0800 -i $BRIDGE_WLANDEV --ip-protocol udp --ip-source-port 67:68 --ip-destination-port 67:68 -j DROP
             fi
             if [ -n "$DHCP_CLIENTID" ] ; then
                 if [ -n "$HOSTNAME" ] ; then
                     udhcpc --interface=${IFCNAME} -F "$HOSTNAME" \
-                      -x hostname:"$HOSTNAME" -x "${CLIENT_MAC_PREFIX}$DHCP_CLIENTID" -R -t 5 -A 10 -S \
+                      -x hostname:"$HOSTNAME" -x "${CLIENT_MAC_PREFIX}$DHCP_CLIENTID" -t 5 -A 10 -S \
                       -s /usr/share/udhcpc/ltrx-dhcp.script \
                       -p /var/run/udhcpc.$IFCNAME.pid -i $IFCNAME &
                 else
                     udhcpc --interface=${IFCNAME} -F "$HOSTNAME" \
-                      -x hostname:"$HOSTNAME" -x "${CLIENT_MAC_PREFIX}$DHCP_CLIENTID" -R -t 5 -A 10 -S \
+                      -x hostname:"$HOSTNAME" -x "${CLIENT_MAC_PREFIX}$DHCP_CLIENTID" -t 5 -A 10 -S \
                       -s /usr/share/udhcpc/ltrx-dhcp.script \
                       -p /var/run/udhcpc.$IFCNAME.pid -i $IFCNAME &
                 fi
             else
                 if [ -n "$HOSTNAME" ] ; then
                     udhcpc --interface=${IFCNAME} -F "$HOSTNAME" \
-                      -x hostname:"$HOSTNAME" -R -t 5 -A 10 -S \
+                      -x hostname:"$HOSTNAME" -t 5 -A 10 -S \
                       -s /usr/share/udhcpc/ltrx-dhcp.script \
                       -p /var/run/udhcpc.$IFCNAME.pid -i $IFCNAME &
                 else
-                    udhcpc --interface=${IFCNAME} -R -t 5 -A 10 -S \
+                    udhcpc --interface=${IFCNAME} -t 5 -A 10 -S \
                       -s /usr/share/udhcpc/ltrx-dhcp.script \
                       -p /var/run/udhcpc.$IFCNAME.pid -i $IFCNAME &
                 fi
@@ -328,6 +406,7 @@ if [ "$IPV6" = "yes" ] ; then
             #run network script to update resolv.conf and routes etc.
             . $LTRX_NET_COMMON
             ltrx_start_network $IFCNAME
+            restart_l3_bridging $IFCNAME $IPV6ADDR
         fi
     elif [ "$BOOTPROTO6" = "dhcp" ] || [ "$BOOTPROTO6" = "bootp" ] ; then
         if [ ! -x /bin/dhcp6c ] ; then
@@ -338,14 +417,22 @@ if [ "$IPV6" = "yes" ] ; then
         for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
             ip -6 addr del $addr dev $IFCNAME scope global
         done
-        if [ -e /tmp/bridging.active -a "$IFCNAME" = $BRIDGE_WLANDEV ] ; then
+        if [ -e /tmp/bridging.active -a "$IFCNAME" = "$BRIDGE_WLANDEV" -a "$TRANSPARENT" = "disabled" -a "$BRIDGE_MODE" = "host" ] ; then
             ebtables -t broute -A BROUTING --concurrent -i $BRIDGE_WLANDEV --proto ipv6 --ip6-protocol udp --ip6-source-port 546:547 --ip6-destination-port 546:547 -j DROP
         fi
-        dhcp6c -c /etc/wide-dhcpv6/client_$IFCNAME.conf -p /var/run/dhcp6.$IFCNAME.pid $IFCNAME &
+        if [[ !(-e /tmp/bridging.active) ||
+                (-e /tmp/bridging.active && "$IFCNAME" != "$BRIDGE_WLANDEV") ||
+                (-e /tmp/bridging.active && "$IFCNAME" = "$BRIDGE_WLANDEV" && ("$BRIDGE_TRANSPARENT" = "disabled" || "$BRIDGE_NETWORKACCESS" = "enabled")) ]]; then
+            dhcp6c -c /etc/wide-dhcpv6/client_$IFCNAME.conf -p /var/run/dhcp6.$IFCNAME.pid $IFCNAME &
+        fi
     else
         logger -p "user.err" "ifstart: invalid ipv6 boot protocol $BOOTPROTO6"
         rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
         exit 4
+    fi
+    if [ "$AUTOCONFIGURE" = "yes" ] ; then
+        #Solicits on-link IPv6 routers (Router Discovery)
+        rdisc6 $IFCNAME&
     fi
 else
     logger -p "user.info" "ifstart: ${IFCNAME} IPv6 is disabled."

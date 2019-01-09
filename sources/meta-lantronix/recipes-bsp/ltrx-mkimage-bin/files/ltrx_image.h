@@ -29,7 +29,7 @@
 /* configuration loader image */
 #define IMAGE_TYPE_CONFIG_LOADER                   8
 /* reserved for now */
-#define IMAGE_TYPE_RESERVED                        9
+#define IMAGE_TYPE_MFG_TEST_LOADER                 9
 /* firmware root file system in ubifs format with 16k erase block size */
 #define IMAGE_TYPE_FIRMWARE_ROOTFS_UBIFS_16KEB     10
 /* OEM defaults file */
@@ -40,9 +40,11 @@
 #define IMAGE_TYPE_FIRMWARE_ROOTFS_UBIFS_128KEB    13
 /* python setup files */
 #define IMAGE_TYPE_PYTHON_USERFS                   14
+/* python setup files */
+#define IMAGE_TYPE_ECDSA_PUBLIC_KEY                15
 
 /* maximum type range*/
-#define IMAGE_TYPE_MAX                             14
+#define IMAGE_TYPE_MAX                             16
 
 #if 0
 #define IMAGE_TYPE_INVALID             0
@@ -79,6 +81,23 @@
 #define IMAGE_LOADOPT_REBOOT                        0x4
 #define IMAGE_LOADOPT_NO_REBOOT                     0x8
 
+#define n32(x)                  htonl(x)
+#define n16(x)                  htons(x)
+
+#define STRINGIFY(v)            __STRINGIFY(v)
+#define __STRINGIFY(v)          #v
+
+# define    IMAGE_HEADER_ID                     "NUEVO-2"
+# define    SB_OTP_MAGIC_SIGNED_ECDSA_2048   1
+# define    SB_OTP_MAGIC_ECDSA_PRIMARY       2
+# define    SB_OTP_MAGIC_ECDSA_OPTIONAL      3
+
+
+static const char header_id[] = IMAGE_HEADER_ID;
+
+#ifndef LTRX_BOOTSTRAP
+uint32_t opt_verbose;
+#endif
 
 /*
  *  256 bytes. All values are BIGENDIAN.
@@ -113,7 +132,8 @@ struct image_header
     uint32_t ChainedImageLengthRemaining;   /* Total length from the start of this header to the end of a chained .rom image file/blob */
 
     uint32_t ImageIndex;
-    uint8_t reserved[24];
+    uint32_t ImagePartitionSizeKBytes;
+    uint8_t reserved[20];
 };
 #pragma pack()
 
@@ -181,5 +201,12 @@ bool image_header_verify(
     const struct image_header *header, struct image_header_checksum *ihcs
 );
 
+void getHeaderDefaults(struct image_header *ihdr);
+
+bool parseImageVersion(char *version, struct image_header *ihdr);
+
+void verbose_printf(uint32_t level, const char *fmt, ...);
+ 
+void printHeader(struct image_header *ihdr);
 
 #endif /* __LTRX_IMAGE_H__ */

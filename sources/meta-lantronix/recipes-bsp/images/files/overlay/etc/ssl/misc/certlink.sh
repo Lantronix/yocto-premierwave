@@ -18,6 +18,8 @@ done
 
 #update the combined (trusted+intermediate) PEM file
 find /etc/ssl/certs/ -name '*auth*.pem' | xargs cat > /etc/ssl/certs/combined.pem
-
+#bundle this with the mach10.crt
+cat /etc/ssl/certs/combined.pem > /etc/ssl/certs/mach10-combined.crt
+cat /etc/ssl/certs/mach10.crt >> /etc/ssl/certs/mach10-combined.crt
 exit 0
 

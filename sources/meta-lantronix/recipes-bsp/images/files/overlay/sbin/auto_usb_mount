@@ -96,7 +96,7 @@ add_dev() {
     tries=0
     while [ $tries -lt 3 ] ; do
         mkdir "$MNTPT_DEV"
-        MRES=`mount -o sync,nodev,noexec,noatime "/dev/$MDEV" "$MNTPT_DEV" 2>&1`
+        MRES=`mount -o sync,nodev,exec,noatime "/dev/$MDEV" "$MNTPT_DEV" 2>&1`
         MRC=$?
         if [ $MRC -ne 0 ] ; then
             if [ $DEV_TYPE == "partition" ] ; then
@@ -117,12 +117,20 @@ add_dev() {
     return 0
 }
 
-if [ "$ACTION" == "add" ] ; then
-    add_dev
-elif [ "$ACTION" == "remove" ] ; then
-    rem_dev
+USB_AUTO_MOUNT="disabled"
+if [ -f /etc/usb_auto_mount ]; then
+    . /etc/usb_auto_mount
+fi
+if [ "$USB_AUTO_MOUNT" == "enabled" ] ; then
+    if [ "$ACTION" == "add" ] ; then
+        add_dev
+    elif [ "$ACTION" == "remove" ] ; then
+        rem_dev
+    else
+        logmsg "unknown action '$ACTION' for dev '$MDEV'"
+    fi
 else
-    logmsg "unknown action '$ACTION' for dev '$MDEV'"
+    logmsg "action '$ACTION' for dev '$MDEV', USB auto mount is disabled"
 fi
 
 exit $?

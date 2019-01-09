@@ -1,44 +1,37 @@
 #!/bin/sh
 #
 
-RSA_HOST_KEY=/etc/dropbear/dropbear_rsa_host_key
-RSA_HOST_TMP_KEY=/tmp/dropbear_rsa_host_key.tmp
-DSS_HOST_KEY=/etc/dropbear/dropbear_dss_host_key
-DSS_HOST_TMP_KEY=/tmp/dropbear_dss_host_key.tmp
-ECDSA_HOST_KEY=/etc/dropbear/dropbear_ecdsa_host_key
-ECDSA_HOST_TMP_KEY=/tmp/dropbear_ecdsa_host_key.tmp
+RSA_HOST_KEY=/etc/ssh_host_rsa_key
+DSS_HOST_KEY=/etc/ssh_host_dsa_key
+ECDSA_HOST_KEY=/etc/ssh_host_ecdsa_key
+ED25519_HOST_KEY=/etc/ssh_host_ed25519_key
 
-# Make sure the dropbearkey progam exists
-[ -f /usr/bin/dropbearkey ] || exit 0
+PERSISTENT_RSA_HOST_KEY=/ltrx_private/sshd/ssh_host_rsa_key
+PERSISTENT_DSS_HOST_KEY=/ltrx_private/sshd/ssh_host_dsa_key
+PERSISTENT_ECDSA_HOST_KEY=/ltrx_private/sshd/ssh_host_ecdsa_key
+PERSISTENT_ED25519_HOST_KEY=/ltrx_private/sshd/ssh_host_ed25519_key
 
-# Make sure dropbear directory exists
-if [ ! -d /ltrx_private/dropbear ] ; then
-    mkdir -p /ltrx_private/dropbear
-fi
-rm -rf /etc/dropbear
-if [ ! -e /etc/dropbear ] ; then
-    ln -sf /ltrx_private/dropbear /etc/dropbear
-fi
+# Make sure the key generation progam exists
+[ -f /usr/bin/ssh-keygen ] || exit 0
 
-# Check for the Dropbear RSA key
-if [ ! -f $RSA_HOST_KEY ] || [ ! -s $RSA_HOST_KEY ] ; then
-    echo -n "generating rsa key... "
-    /usr/bin/dropbearkey -t rsa -f $RSA_HOST_TMP_KEY > /dev/null 2>&1
-    mv $RSA_HOST_TMP_KEY $RSA_HOST_KEY
+# Make sure sshd directory exists
+if [ ! -d /ltrx_private/sshd ] ; then
+    mkdir -p /ltrx_private/sshd
 fi
 
-# Check for the Dropbear DSS key
-if [ ! -f $DSS_HOST_KEY ] || [ ! -s $DSS_HOST_KEY ] ; then
-    echo -n "generating dsa key... "
-    /usr/bin/dropbearkey -t dss -f $DSS_HOST_TMP_KEY > /dev/null 2>&1
-    mv $DSS_HOST_TMP_KEY $DSS_HOST_KEY
-fi
-
-# Check for the Dropbear ECDSA key
-if [ ! -f $ECDSA_HOST_KEY ] || [ ! -s $ECDSA_HOST_KEY ] ; then
-    echo -n "generating ecdsa key... "
-    /usr/bin/dropbearkey -t ecdsa -f $ECDSA_HOST_TMP_KEY > /dev/null 2>&1
-    mv $ECDSA_HOST_TMP_KEY $ECDSA_HOST_KEY
+# Check for the sshd RSA key
+if [ ! -f $PERSISTENT_RSA_HOST_KEY ] || [ ! -s $PERSISTENT_RSA_HOST_KEY ] ; then
+    echo -n "generating keys... "
+    /usr/bin/ssh-keygen -A > /dev/null 2>&1
+    cp $RSA_HOST_KEY $PERSISTENT_RSA_HOST_KEY
+    cp $DSS_HOST_KEY $PERSISTENT_DSS_HOST_KEY
+    cp $ECDSA_HOST_KEY $PERSISTENT_ECDSA_HOST_KEY
+    cp $ED25519_HOST_KEY $PERSISTENT_ED25519_HOST_KEY
+else
+    cp $PERSISTENT_RSA_HOST_KEY $RSA_HOST_KEY
+    cp $PERSISTENT_DSS_HOST_KEY $DSS_HOST_KEY
+    cp $PERSISTENT_ECDSA_HOST_KEY $ECDSA_HOST_KEY
+    cp $PERSISTENT_ED25519_HOST_KEY $ED25519_HOST_KEY
 fi
 
 exit $?
