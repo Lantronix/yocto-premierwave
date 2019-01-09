@@ -23,7 +23,7 @@ diff -ruN bluez_utils-5.43/Makefile.in bluez_utils-5.43_mod/Makefile.in
  @TOOLS_TRUE@	tools/hciconfig$(EXEEXT) tools/hcitool$(EXEEXT) \
 diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btgatt-server.c
 --- bluez_utils-5.43/tools/btgatt-server.c	2017-07-11 18:21:39.057104099 +0530
-+++ bluez_utils-5.43_mod/tools/btgatt-server.c	2017-09-19 16:01:00.506477255 +0530
++++ bluez_utils-5.43_mod/tools/btgatt-server.c	2017-11-29 15:52:36.003124218 +0530
 @@ -28,6 +28,7 @@
  #include <getopt.h>
  #include <unistd.h>
@@ -1831,7 +1831,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  	bt_gatt_server_unref(server->gatt);
  	gatt_db_unref(server->db);
  }
-@@ -628,22 +1958,13 @@
+@@ -628,23 +1958,16 @@
  
  	printf("Options:\n"
  		"\t-i, --index <id>\t\tSpecify adapter index, e.g. hci0\n"
@@ -1841,7 +1841,9 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 -		"\t-t, --type [random|public] \t The source address type\n"
  		"\t-v, --verbose\t\t\tEnable extra logging\n"
 -		"\t-r, --heart-rate\t\tEnable Heart Rate service\n"
- 		"\t-h, --help\t\t\tDisplay help\n");
+-		"\t-h, --help\t\t\tDisplay help\n");
++		"\t-h, --help\t\t\tDisplay help\n"
++                "\t-b, --bdadress\t\t\tSets the serial number of the device\n");
  }
  
  static struct option main_options[] = {
@@ -1852,9 +1854,11 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  	{ "verbose",		0, 0, 'v' },
 -	{ "heart-rate",		0, 0, 'r' },
  	{ "help",		0, 0, 'h' },
++        { "bdaddress",          1, 0, 'b' },
  	{ }
  };
-@@ -710,414 +2031,6 @@
+ 
+@@ -710,414 +2033,6 @@
  	return -1;
  }
  
@@ -2269,12 +2273,12 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  static void signal_cb(int signum, void *user_data)
  {
  	switch (signum) {
-@@ -1129,20 +2042,57 @@
+@@ -1129,21 +2044,44 @@
  		break;
  	}
  }
 -
-+static void getHostName(void)
++static void getHostName(char *device_info)
 +{
 +        FILE *fp;
 +        system("hostname > hostname");
@@ -2282,7 +2286,8 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +        fscanf(fp, "%s", hostName);
 +        fclose(fp);
 +        char *ch = hostName;
-+        char serial_no[18];
++        char serial_no[13];
++        int i;
 +        while(*ch != '\0')
 +        {
 +             if(*ch == '-')
@@ -2292,28 +2297,12 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +             }
 +             ch++;
 +        }
-+        system("ifconfig | grep 'eth0' | cut -d' ' -f 11 > serial_number");
-+        fp = fopen("serial_number", "r");
-+        fgets(serial_no, 18, fp);
 +        strcat(hostName, "-");
-+        int i = 0, j=0;
-+        while(serial_no[i]!='\0')
-+        {
-+            if(serial_no[i] == ':')
-+            {
-+                 j=i+1;
-+                 while(serial_no[j] != '\0')
-+                 {
-+                     serial_no[j-1] = serial_no[j];
-+                     j++;
-+                 }
-+                 serial_no[j-1] = serial_no[j];
-+             }
-+             i++;
-+         }
-+         strcat(hostName, serial_no);
-+         fclose(fp);   
-+         system("rm hostname serial_number");
++        for(i = 0; i < 12; i++)
++            serial_no[i] = device_info[i + 15];
++        serial_no[12] = '\0';
++        strcat(hostName, serial_no);
++        system("rm hostname");
 +}
  int main(int argc, char *argv[])
  {
@@ -2324,16 +2313,19 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  	int sec = BT_SECURITY_LOW;
  	uint8_t src_type = BDADDR_LE_PUBLIC;
  	uint16_t mtu = 0;
++        char device_info[29];
  	sigset_t mask;
 -	bool hr_visible = false;
 -	struct server *server;
 -
+-	while ((opt = getopt_long(argc, argv, "+hvrs:t:m:i:",
 +	FILE *fp;
 +   
- 	while ((opt = getopt_long(argc, argv, "+hvrs:t:m:i:",
++	while ((opt = getopt_long(argc, argv, "+hvrs:t:m:i:b",
  						main_options, NULL)) != -1) {
  		switch (opt) {
-@@ -1152,56 +2102,12 @@
+ 		case 'h':
+@@ -1152,57 +2090,17 @@
  		case 'v':
  			verbose = true;
  			break;
@@ -2388,14 +2380,18 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  			}
 -
  			break;
++                case 'b':
++                        optind = 3;
++                        strcpy(device_info, argv[2]);
++                        break;
  		default:
  			fprintf(stderr, "Invalid option: %c\n", opt);
-@@ -1224,32 +2130,26 @@
+ 			return EXIT_FAILURE;
+@@ -1224,32 +2122,25 @@
  		perror("Adapter not available");
  		return EXIT_FAILURE;
  	}
-+        getHostName();
-+        //hostName = NetHostLocalNameGet_malloc(GetNetActiveIndex());
++        getHostName(device_info);
 +        PRLOG("HostName = %s\n", hostName);
 +
 +        advertise();
@@ -2430,7 +2426,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  	sigemptyset(&mask);
  	sigaddset(&mask, SIGINT);
  	sigaddset(&mask, SIGTERM);
-@@ -1261,8 +2161,10 @@
+@@ -1261,8 +2152,10 @@
  	mainloop_run();
  
  	printf("\n\nShutting down...\n");

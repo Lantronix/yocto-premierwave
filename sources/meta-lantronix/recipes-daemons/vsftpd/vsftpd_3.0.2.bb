@@ -15,6 +15,8 @@ SRC_URI = "https://security.appspot.com/downloads/vsftpd-${PV}.tar.gz \
            file://vsftpd-3.0.2-002-ltrx-no-truncate-fifo.patch \
            file://vsftpd-3.0.2-003-ltrx-path-jail.patch \
            file://vsftpd-3.0.2-004-ltrx-firmware-upgrade.patch \
+           file://vsftpd-3.0.2-005-ltrx-firmware-upgrade-permission.patch \
+           file://vsftpd-3.0.2-006-ltrx-firmware-upgrade-2.patch \
 "
 
 LIC_FILES_CHKSUM = "file://COPYING;md5=a6067ad950b28336613aed9dd47b1271 \

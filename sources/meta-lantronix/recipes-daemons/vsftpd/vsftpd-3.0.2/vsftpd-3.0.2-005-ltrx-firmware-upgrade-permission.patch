@@ -1,0 +1,37 @@
+--- vsftpd-3.0.2/postlogin.c	2017-06-30 15:13:50.278661454 -0700
++++ ltrx-vsftpd-3.0.2/postlogin.c	2017-06-30 15:16:22.941877432 -0700
+@@ -1042,6 +1042,22 @@
+   vsf_sysutil_free(path);
+ }
+ 
++static int
++ltrx_check_fwupdate_permission(struct vsf_session* p_sess,struct mystr* p_filename)
++{
++    if (!str_equal_text(p_filename, "/tmp/firmware.rom"))
++    {
++        //this is ok
++        return 1;
++    }
++    struct mystr allowed_users = INIT_MYSTR;
++    str_fileread(&allowed_users,"/etc/vsftpd/firmware_user_list",256);
++    str_syslog(&allowed_users, 1);
++    int rc = str_contains_line(&allowed_users,&p_sess->user_str);
++    str_free(&allowed_users);
++    return rc;//0==no,1==yes
++}
++
+ static void
+ handle_upload_common(struct vsf_session* p_sess, int is_append, int is_unique)
+ {
+@@ -1076,6 +1092,11 @@
+     return;
+   }
+   ltrx_translate_fwname(p_filename);
++  if(0==ltrx_check_fwupdate_permission(p_sess,p_filename))
++  {
++      vsf_cmdio_write(p_sess, FTP_NOPERM, "Permission denied.");
++      return;
++  }
+   /* NOTE - actual file permissions will be governed by the tunable umask */
+   /* XXX - do we care about race between create and chown() of anonymous
+    * upload?
