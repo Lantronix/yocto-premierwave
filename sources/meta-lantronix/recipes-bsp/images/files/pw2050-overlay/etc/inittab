@@ -15,13 +15,17 @@
 
 # Startup the system
 null::sysinit:/bin/mount -t proc proc /proc
-null::sysinit:/bin/mount -o remount,sync,rw /
+null::sysinit:/bin/mount -o remount,sync,ro /
 null::sysinit:/bin/mkdir -p /dev/pts
 null::sysinit:/bin/mount -a
 null::sysinit:/bin/mount -o remount,size=64M /tmp
 null::sysinit:/bin/echo > /dev/mdev.seq
 null::sysinit:/sbin/sysctl -w kernel.hotplug=/sbin/mdev
 null::sysinit:/sbin/mdev -s
+null::sysinit:/bin/mknod /dev/cp c 120 0
+
+null::sysinit:/sbin/devmem 0xfffff860 32 0x00040000
+null::sysinit:/sbin/devmem 0xfffff894 32 0x00040000
 
 # bring up radio subsystem power early
 null::sysinit:/sbin/ltrx-radio-up &
@@ -29,6 +33,7 @@ null::sysinit:/sbin/ltrx-radio-up &
 null::sysinit:/sbin/ltrx_remount_etc
 
 null::sysinit:/bin/mkdir -m777 /tmp/tftp &
+null::sysinit:/bin/mkdir -p -m777 /tmp/nginx/logs/ &
 null::sysinit:/bin/mkdir -m755 /tmp/avahi-autoipd &
 null::sysinit:/bin/mkdir -p /ltrx_private/cfg &
 # delete cfgldr_inputs in case it exists, which includes credential info
@@ -38,6 +43,12 @@ null::sysinit:/bin/chown admin:admin /ltrx_user
 null::sysinit:/bin/chmod -R o-w,o+r,g+rw /ltrx_user &
 null::sysinit:/bin/mkdir -p /etc/features &
 null::sysinit:/bin/mkdir -p /etc/ssl/clientcerts &
+
+# Put a getty on the serial port
+ttyS0::respawn:/sbin/getty ttyS0 115200 vt100
+#ttyGS0::respawn:/sbin/getty ttyGS0 115200 vt100
+#ttyS0::respawn:-/bin/sh
+#ttyGS0::respawn:-/bin/sh
 
 null::sysinit:/bin/mkdir -p /var/db
 null::sysinit:/bin/mkdir -p /var/lib/ebtables/
@@ -78,12 +89,6 @@ null::sysinit:/bin/ltrx_as > /dev/null 2>&1 &
 #null::sysinit:/usr/sbin/avahi-daemon --no-drop-root &>/dev/null
 #null::sysinit:/etc/init.d/S50avahi-daemon start &
 null::sysinit:/bin/netman &
-
-# Put a getty on the serial port
-ttyS0::respawn:/sbin/getty ttyS0 115200 vt100
-#ttyGS0::respawn:/sbin/getty ttyGS0 115200 vt100
-#ttyS0::respawn:-/bin/sh
-#ttyGS0::respawn:-/bin/sh
 
 # Stuff to do before rebooting
 null::shutdown:/sbin/hwclock --utc --systohc

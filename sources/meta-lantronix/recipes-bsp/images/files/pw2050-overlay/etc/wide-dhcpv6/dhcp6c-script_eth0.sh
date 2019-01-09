@@ -24,4 +24,5 @@ touch $DOMAIN_CONF
 #run network script to update resolv.conf and routes etc.
 . $LTRX_NET_COMMON
 ltrx_start_network ${interface}
+restart_l3_bridging ${interface}
 exit 0

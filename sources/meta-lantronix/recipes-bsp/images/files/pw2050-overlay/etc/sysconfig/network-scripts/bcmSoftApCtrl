@@ -16,7 +16,7 @@
 SOFT_AP_CFG_FILE="/tmp/softapcfg"
 DHCP_SERVER_CONFIG_FILE=/etc/dnsmasq.conf
 DHCP_SERVER_PID_FILE=/var/run/wl0.1.dnsmasq.pid
-
+DHCP_SERVER_LEASE_FILE=/ltrx_private/wl0.1.dnsmasq.leases
 WLAN_IFCFILE=/etc/sysconfig/network-scripts/ifcfg-wlan0
 
 # For the time being we're using dnsmasq...
@@ -165,7 +165,7 @@ if [ "$1" == "start" ]; then
             ip -6 addr del $addr dev wl0.1 scope link
         done
     fi
-    /usr/sbin/dnsmasq --host-record=lantronix.local,$IP_ADDRESS$IPV6_AAAA_RECORD --host-record=$DNS_REDIRECT,$IP_ADDRESS$IPV6_AAAA_RECORD --pid-file=$DHCP_SERVER_PID_FILE
+    /usr/sbin/dnsmasq -l $DHCP_SERVER_LEASE_FILE --host-record=lantronix.local,$IP_ADDRESS$IPV6_AAAA_RECORD --host-record=$DNS_REDIRECT,$IP_ADDRESS$IPV6_AAAA_RECORD --pid-file=$DHCP_SERVER_PID_FILE
 
 elif [ "$1" == "stop" ]; then
 
