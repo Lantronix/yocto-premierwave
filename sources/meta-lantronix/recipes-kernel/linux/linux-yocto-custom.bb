@@ -36,7 +36,7 @@ require recipes-kernel/linux/linux-yocto.inc
 # PV = "${LINUX_VERSION}+git${SRCPV}"
 
 SRC_URI = "file://defconfig "
-
+SRC_URI += "file://0001-atmel_serial_nodma.patch "
 # The default kernel config for all the machine should mentioned in defconfig if it is common. If it is related to particular
 #  target then update the respective .cfg config file. Ex: for pw2050.cfg for pw2050, sgx5150.cfg for sgx5150 and that will be appended below. 
 SRC_URI_append_pw2050 = "file://pw2050.cfg"
