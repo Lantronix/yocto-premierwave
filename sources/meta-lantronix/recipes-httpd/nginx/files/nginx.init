@@ -17,39 +17,6 @@ set -e
 mkdir -p /var/log/nginx
 mkdir -p /run/nginx
 
-case "$1" in
-  start)
-        echo -n "Starting $DESC: "
-        start-stop-daemon --start --quiet --pidfile $PID \
-                --name $NAME --exec $DAEMON -- $DAEMON_OPTS
-        echo "$NAME."
-        ;;
-  stop)
-        echo -n "Stopping $DESC: "
-        start-stop-daemon -K --quiet --pidfile $PID \
-                --name $NAME
-        echo "$NAME."
-        ;;
-  restart|force-reload)
-        echo -n "Restarting $DESC: "
-        start-stop-daemon -K --quiet --pidfile $PID \
-                --name $NAME
-        sleep 1
-        start-stop-daemon --start --quiet --pidfile $PID \
-                --name $NAME --exec $DAEMON -- $DAEMON_OPTS
-        echo "$NAME."
-        ;;
-  reload)
-      echo -n "Reloading $DESC configuration: "
-      start-stop-daemon --stop --signal HUP --quiet --pidfile $PID \
-          --exec $DAEMON
-      echo "$NAME."
-      ;;
-  *)
-        N=/etc/init.d/$NAME
-        echo "Usage: $N {start|stop|restart|force-reload}" >&2
-        exit 1
-        ;;
-esac
+logger "$1 LTRX $DESC: $NAME"
 
 exit 0
