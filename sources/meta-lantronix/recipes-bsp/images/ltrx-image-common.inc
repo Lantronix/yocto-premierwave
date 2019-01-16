@@ -96,6 +96,7 @@ EOF
 null::sysinit:/bin/mkdir -p /var/volatile/log
 null::sysinit:/bin/mkdir -p /var/volatile/tmp
 null::sysinit:/bin/mkdir -p /run/lock
+null::sysinit:/bin/mkdir -p /var/run/sshd
 null::sysinit:/usr/bin/update-alternatives
 null::sysinit:/bin/bash -c 'for script in /etc/rcS.d/*; do \$script start; done'
 null::sysinit:/bin/bash -c 'for script in /etc/rc5.d/*; do \$script start; done'
@@ -140,6 +141,11 @@ EOF
     chmod 4755 ${IMAGE_ROOTFS}/bin/ping6.iputils
     chmod 4755 ${IMAGE_ROOTFS}/sbin/ebtables
     chmod 4755 ${IMAGE_ROOTFS}/usr/sbin/iptables
+    ln -sf /tmp/wpa_supplicant.current ${IMAGE_ROOTFS}/usr/sbin/wpa_supplicant
+    ln -sf /tmp/wpa_passphrase.current ${IMAGE_ROOTFS}/usr/sbin/wpa_passphrase
+    mkdir  -p ${IMAGE_ROOTFS}/root/.ssh
+    touch  ${IMAGE_ROOTFS}/root/.ssh/known_hosts
+    ln -sf /tmp/root_known_hosts ${IMAGE_ROOTFS}/root/.ssh/known_hosts
     rm -rf ${IMAGE_ROOTFS}/lib/libBrokenLocale*
     rm -rf ${IMAGE_ROOTFS}/usr/lib/libBrokenLocale.so
     rm -rf ${IMAGE_ROOTFS}/lib/libanl*
