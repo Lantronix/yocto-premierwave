@@ -55,9 +55,18 @@ IMAGE_INSTALL += "openssl"
 IMAGE_INSTALL += "openswan"
 IMAGE_INSTALL += "paho-mqtt.embedded-c"
 IMAGE_INSTALL += "python"
+IMAGE_INSTALL += "python-paho-mqtt"
+IMAGE_INSTALL += "python-schedule"
 IMAGE_INSTALL += "python-pyserial"
 IMAGE_INSTALL += "python-pyusb"
 IMAGE_INSTALL += "python-pyzmq"
+IMAGE_INSTALL += "python-requests"
+IMAGE_INSTALL += "python-minimalmodbus"
+IMAGE_INSTALL += "python-configparser"
+IMAGE_INSTALL += "python-psutil"
+IMAGE_INSTALL += "python-werkzeug"
+IMAGE_INSTALL += "python-flask"
+IMAGE_INSTALL += "python-numpy"
 IMAGE_INSTALL += "python-setuptools"
 IMAGE_INSTALL += "quagga"
 IMAGE_INSTALL += "readline"
@@ -76,6 +85,7 @@ IMAGE_INSTALL += "zlib"
 apply_overlay() {
     cp -rf ${THISDIR}/files/overlay/* ${IMAGE_ROOTFS}/
     cp -rf ${THISDIR}/files/${MACHINE}-overlay/* ${IMAGE_ROOTFS}/
+    cp ${THISDIR}/files/ast.pyc ${IMAGE_ROOTFS}/usr/lib/python2.7/
 
     # un-expire account passwords
     sed -i 's/:0:0:99999/:10933:0:99999/' ${IMAGE_ROOTFS}/etc/shadow
@@ -192,6 +202,9 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/email/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/email/test
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/email/mime/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/plat-linux2/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/ensurepip/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/pydoc_data/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/serial/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/serial/tools/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/serial/urlhandler/*.py
@@ -271,7 +284,96 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/share/tabset
     rm -rf ${IMAGE_ROOTFS}/usr/lib/perl
     rm -rf ${IMAGE_ROOTFS}//usr/lib/arm-poky-linux*
-
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/config/config.c
+    rm -rf ${IMAGE_ROOTFS}/usr/share/readline/*.c
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/markupsafe/_speedups.c
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/swig_ext/src/example.c
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/mingw/gfortran_vs2003_hack.c
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/tests/src/array_from_pyobj/wrapmodule.c
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/src/fortranobject.c
+    rm -rf ${IMAGE_ROOTFS}/usr/bin/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/xml/parsers/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/zmq/eventloop/minitornado/platform/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/backports/configparser/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/werkzeug/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/werkzeug/contrib/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/werkzeug/debug/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/psutil/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/chardet/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/urllib3/util/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/urllib3/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/urllib3/packages/ssl_match_hostname/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/urllib3/packages/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/urllib3/contrib/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/multiprocessing/dummy/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/multiprocessing/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/jinja2/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/jinja2/testsuite/res/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/jinja2/testsuite/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/markupsafe/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/click/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/flask/json/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/flask/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/simplejson/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/simplejson/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/simplejson/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/unittest/test/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/unittest/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/f2py_f90_ext/tests/test_foo.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/testing/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/linalg/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/lib/benchmarks/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/docs/usersguide/setup_example.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/docs/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/tools/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/sphinx/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/fft/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/fft/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/f2py_f90_ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/f2py_f90_ext/tests/*.pya
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/swig_ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/swig_ext/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/f2py_ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/f2py_ext/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/pyrex_ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/pyrex_ext/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/gen_ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/gen_ext/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/fcompiler/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/command/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/numarray/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/testing/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/linalg/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/lib/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/lib/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/doc/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/core/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/core/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/compat/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/matrixlib/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/matrixlib/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/polynomial/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/polynomial/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/random/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/random/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/ma/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/ma/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/tests/*.py 
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/oldnumeric/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/oldnumeric/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/plugins/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/mibs/
     find ${IMAGE_ROOTFS}/usr/lib/ipsec -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/libexec/ipsec/  -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/lib/  -name '*.o' | xargs rm -f

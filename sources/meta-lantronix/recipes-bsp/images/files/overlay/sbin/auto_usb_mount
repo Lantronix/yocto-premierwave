@@ -117,20 +117,12 @@ add_dev() {
     return 0
 }
 
-USB_AUTO_MOUNT="disabled"
-if [ -f /etc/usb_auto_mount ]; then
-    . /etc/usb_auto_mount
-fi
-if [ "$USB_AUTO_MOUNT" == "enabled" ] ; then
-    if [ "$ACTION" == "add" ] ; then
-        add_dev
-    elif [ "$ACTION" == "remove" ] ; then
-        rem_dev
-    else
-        logmsg "unknown action '$ACTION' for dev '$MDEV'"
-    fi
+if [ "$ACTION" == "add" ] ; then
+    add_dev
+elif [ "$ACTION" == "remove" ] ; then
+    rem_dev
 else
-    logmsg "action '$ACTION' for dev '$MDEV', USB auto mount is disabled"
+    logmsg "unknown action '$ACTION' for dev '$MDEV'"
 fi
 
 exit $?

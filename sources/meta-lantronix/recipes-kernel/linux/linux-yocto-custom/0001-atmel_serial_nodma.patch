@@ -1,0 +1,30 @@
+--- kernel-source/drivers/tty/serial/atmel_serial.c	2017-12-06 14:12:26.000000000 -0800
++++ kernel-source/drivers/tty/serial/atmel_serial.c	2018-12-18 22:00:34.624937292 -0800
+@@ -839,6 +839,13 @@
+                 dmaengine_pause(atmel_port->chan_tx);
+             }
+ 
++            /*
++	        * Disable the transmitter.
++	        * This is mandatory when DMA is used, otherwise the DMA buffer
++	        * is fully transmitted.
++	        */
++	        UART_PUT_CR(port, ATMEL_US_TXDIS);
++
+             /* Disable interrupts */
+             UART_PUT_IDR(port, atmel_port->tx_done_mask);
+ 
+@@ -884,9 +891,13 @@
+                 if(atmel_port->cookie_tx <= 0)
+                     tasklet_schedule(&atmel_port->tasklet);
+             }
++            
++            /* re-enable the transmitter */
++            UART_PUT_CR(port, ATMEL_US_TXEN);
+ 
+             /* Enable interrupts */
+             UART_PUT_IER(port, atmel_port->tx_done_mask);
++
+         }
+ 
+         /*
