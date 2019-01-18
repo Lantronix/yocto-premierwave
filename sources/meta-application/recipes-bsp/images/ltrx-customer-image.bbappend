@@ -1,5 +1,6 @@
 # uncomment the following line to build the "helloworld" application into the ROM image
 #IMAGE_INSTALL += "helloworld"
+#IMAGE_INSTALL += "bacnet-stack"
 
 inherit extrausers
 
