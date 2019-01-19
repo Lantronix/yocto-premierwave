@@ -93,20 +93,18 @@ apply_overlay() {
     # override to use tmpfs instead of RAM disk
     install -D -m 0755 ${THISDIR}/files/ltrx_remount_etc ${IMAGE_ROOTFS}/sbin/ltrx_remount_etc
 
-# add yocto tmpfs mounts to Lantronix fstab
-    cat >> ${IMAGE_ROOTFS}/etc/fstab << EOF
-tmpfs /run tmpfs mode=0755,nodev,nosuid,strictatime 0 0
-tmpfs /var/volatile tmpfs defaults 0 0
-EOF
-
 # create dirs in tmpfs mounts
     cat >> ${IMAGE_ROOTFS}/etc/inittab << EOF
 
 # Yocto compatibility fixes
-null::sysinit:/bin/mkdir -p /var/volatile/log
-null::sysinit:/bin/mkdir -p /var/volatile/tmp
 null::sysinit:/bin/mkdir -p /run/lock
 null::sysinit:/bin/mkdir -p /var/run/sshd
+null::sysinit:/bin/mkdir -p /etc/ssh
+null::sysinit:ln -sf /etc/sshd_config /etc/ssh/sshd_config
+null::sysinit:ln -sf /etc/ssh_host_rsa_key /etc/ssh/
+null::sysinit:ln -sf /etc/ssh_host_dsa_key /etc/ssh/
+null::sysinit:ln -sf /etc/ssh_host_ecdsa_key /etc/ssh/
+null::sysinit:ln -sf /etc/ssh_host_ed25519_key /etc/ssh/
 null::sysinit:/usr/bin/update-alternatives
 null::sysinit:/bin/bash -c 'for script in /etc/rcS.d/*; do \$script start; done'
 null::sysinit:/bin/bash -c 'for script in /etc/rc5.d/*; do \$script start; done'
@@ -151,6 +149,20 @@ EOF
     chmod 4755 ${IMAGE_ROOTFS}/bin/ping6.iputils
     chmod 4755 ${IMAGE_ROOTFS}/sbin/ebtables
     chmod 4755 ${IMAGE_ROOTFS}/usr/sbin/iptables
+
+# Yocto compatibility fixes
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/cache
+    mkdir ${IMAGE_ROOTFS}/var/empty/
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/lock
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/log
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/pcmcia
+    rm -rf ${IMAGE_ROOTFS}/run/*
+    rmdir ${IMAGE_ROOTFS}/run
+    ln -sf /tmp ${IMAGE_ROOTFS}/run
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/spool
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/tmp
+    mkdir ${IMAGE_ROOTFS}/var/www
+
     ln -sf /tmp/wpa_supplicant.current ${IMAGE_ROOTFS}/usr/sbin/wpa_supplicant
     ln -sf /tmp/wpa_passphrase.current ${IMAGE_ROOTFS}/usr/sbin/wpa_passphrase
     mkdir  -p ${IMAGE_ROOTFS}/root/.ssh
