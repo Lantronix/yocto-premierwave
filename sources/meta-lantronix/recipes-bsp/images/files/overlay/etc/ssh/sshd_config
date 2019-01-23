@@ -1,0 +1,6 @@
+PermitRootLogin yes
+Port 22
+MaxSessions 3
+MaxStartups 3
+SyslogFacility USER
+LogLevel INFO
