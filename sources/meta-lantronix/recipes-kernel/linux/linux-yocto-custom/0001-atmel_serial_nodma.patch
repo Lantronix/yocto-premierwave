@@ -1,30 +1,43 @@
 --- kernel-source/drivers/tty/serial/atmel_serial.c	2017-12-06 14:12:26.000000000 -0800
 +++ kernel-source/drivers/tty/serial/atmel_serial.c	2018-12-18 22:00:34.624937292 -0800
-@@ -839,6 +839,13 @@
-                 dmaengine_pause(atmel_port->chan_tx);
-             }
- 
-+            /*
-+	        * Disable the transmitter.
-+	        * This is mandatory when DMA is used, otherwise the DMA buffer
-+	        * is fully transmitted.
-+	        */
-+	        UART_PUT_CR(port, ATMEL_US_TXDIS);
-+
+@@ -842,6 +842,16 @@ static void atmel_config_ltrx_intfc(unsigned int line, struct serial_rs485 *rs48
              /* Disable interrupts */
              UART_PUT_IDR(port, atmel_port->tx_done_mask);
  
-@@ -884,9 +891,13 @@
-                 if(atmel_port->cookie_tx <= 0)
-                     tasklet_schedule(&atmel_port->tasklet);
-             }
-+            
-+            /* re-enable the transmitter */
-+            UART_PUT_CR(port, ATMEL_US_TXEN);
++            if ((atmel_port->rs485.flags & SER_RS485_ENABLED) &&
++                 !(atmel_port->rs485.flags & SER_RS485_RX_DURING_TX))
++            {
++                /*
++                * Disable the transmitter.
++                * This is mandatory when DMA is used, otherwise the DMA buffer
++                * is fully transmitted.
++                */
++                UART_PUT_CR(port, ATMEL_US_TXDIS);
++            }
+             /* stop tx, start rx, when half-duplex */
+             if ((atmel_port->rs485.flags & SER_RS485_ENABLED) &&
+                     !(atmel_port->rs485.flags & SER_RS485_RX_DURING_TX))
+@@ -868,7 +878,11 @@ static void atmel_config_ltrx_intfc(unsigned int line, struct serial_rs485 *rs48
+                 /* stop rx, start tx, when half-duplex */
+                 if ((atmel_port->rs485.flags & SER_RS485_ENABLED) &&
+                         !(atmel_port->rs485.flags & SER_RS485_RX_DURING_TX))
++                {
+                     atmel_stop_rx(port);
++                    /* re-enable the transmitter */
++                    UART_PUT_CR(port, ATMEL_US_TXEN);
++                }
  
-             /* Enable interrupts */
-             UART_PUT_IER(port, atmel_port->tx_done_mask);
-+
-         }
+                 /* re-enable PDC transmit */
+                 UART_PUT_PTCR(port, ATMEL_PDC_TXTEN);
+@@ -877,7 +891,11 @@ static void atmel_config_ltrx_intfc(unsigned int line, struct serial_rs485 *rs48
+                 /* stop rx, start tx, when half-duplex */
+                 if ((atmel_port->rs485.flags & SER_RS485_ENABLED) &&
+                         !(atmel_port->rs485.flags & SER_RS485_RX_DURING_TX))
++                {
+                     atmel_stop_rx(port);
++                    /* re-enable the transmitter */
++                    UART_PUT_CR(port, ATMEL_US_TXEN);
++                }
  
-         /*
+                 //        dev_dbg(port->dev, "%s: DMA_RESUME cookie=%d\n", __func__, atmel_port->cookie_tx);
+                 dmaengine_resume(atmel_port->chan_tx);
