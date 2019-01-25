@@ -43,7 +43,7 @@ RDEPENDS_${PN} += "paho-mqtt.embedded-c"
 RDEPENDS_${PN} += "python"
 RDEPENDS_${PN} += "traceroute"
 RDEPENDS_${PN} += "tzdata"
-RDEPENDS_${PN} += "vsftpd"
+#RDEPENDS_${PN} += "vsftpd"
 RDEPENDS_${PN} += "wireless-tools"
 RDEPENDS_${PN} += "zeromq"
 

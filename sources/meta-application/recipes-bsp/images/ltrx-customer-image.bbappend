@@ -1,11 +1,12 @@
 # uncomment the following line to build the "helloworld" application into the ROM image
 #IMAGE_INSTALL += "helloworld"
 IMAGE_INSTALL += "bacnet-stack"
+IMAGE_INSTALL_remove = "vsftpd"
 
 inherit extrausers
 
 # uncomment the following line to change "root" password to "rootYocto"
-EXTRA_USERS_PARAMS = "usermod -P root root; "
+EXTRA_USERS_PARAMS = "usermod -P Tdams@sgx_5150 root; "
 
 # uncomment the following line to disable "root" login
 #EXTRA_USERS_PARAMS = "userdel -r root; "
