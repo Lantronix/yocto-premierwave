@@ -83,20 +83,18 @@ apply_overlay() {
     # override to use tmpfs instead of RAM disk
     install -D -m 0755 ${THISDIR}/files/ltrx_remount_etc ${IMAGE_ROOTFS}/sbin/ltrx_remount_etc
 
-# add yocto tmpfs mounts to Lantronix fstab
-    cat >> ${IMAGE_ROOTFS}/etc/fstab << EOF
-tmpfs /run tmpfs mode=0755,nodev,nosuid,strictatime 0 0
-tmpfs /var/volatile tmpfs defaults 0 0
-EOF
-
 # create dirs in tmpfs mounts
     cat >> ${IMAGE_ROOTFS}/etc/inittab << EOF
 
 # Yocto compatibility fixes
-null::sysinit:/bin/mkdir -p /var/volatile/log
-null::sysinit:/bin/mkdir -p /var/volatile/tmp
 null::sysinit:/bin/mkdir -p /run/lock
 null::sysinit:/bin/mkdir -p /var/run/sshd
+null::sysinit:/bin/mkdir -p /etc/ssh
+null::sysinit:ln -sf /etc/sshd_config /etc/ssh/sshd_config
+null::sysinit:ln -sf /etc/ssh_host_rsa_key /etc/ssh/
+null::sysinit:ln -sf /etc/ssh_host_dsa_key /etc/ssh/
+null::sysinit:ln -sf /etc/ssh_host_ecdsa_key /etc/ssh/
+null::sysinit:ln -sf /etc/ssh_host_ed25519_key /etc/ssh/
 null::sysinit:/usr/bin/update-alternatives
 null::sysinit:/bin/bash -c 'for script in /etc/rcS.d/*; do \$script start; done'
 null::sysinit:/bin/bash -c 'for script in /etc/rc5.d/*; do \$script start; done'
@@ -141,6 +139,20 @@ EOF
     chmod 4755 ${IMAGE_ROOTFS}/bin/ping6.iputils
     chmod 4755 ${IMAGE_ROOTFS}/sbin/ebtables
     chmod 4755 ${IMAGE_ROOTFS}/usr/sbin/iptables
+
+# Yocto compatibility fixes
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/cache
+    mkdir ${IMAGE_ROOTFS}/var/empty/
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/lock
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/log
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/pcmcia
+    rm -rf ${IMAGE_ROOTFS}/run/*
+    rmdir ${IMAGE_ROOTFS}/run
+    ln -sf /tmp ${IMAGE_ROOTFS}/run
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/spool
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/tmp
+    mkdir ${IMAGE_ROOTFS}/var/www
+
     ln -sf /tmp/wpa_supplicant.current ${IMAGE_ROOTFS}/usr/sbin/wpa_supplicant
     ln -sf /tmp/wpa_passphrase.current ${IMAGE_ROOTFS}/usr/sbin/wpa_passphrase
     mkdir  -p ${IMAGE_ROOTFS}/root/.ssh
@@ -192,6 +204,9 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/email/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/email/test
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/email/mime/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/plat-linux2/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/ensurepip/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/pydoc_data/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/serial/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/serial/tools/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/serial/urlhandler/*.py
@@ -271,7 +286,99 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/share/tabset
     rm -rf ${IMAGE_ROOTFS}/usr/lib/perl
     rm -rf ${IMAGE_ROOTFS}//usr/lib/arm-poky-linux*
-
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/config/config.c
+    rm -rf ${IMAGE_ROOTFS}/usr/share/readline/*.c
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/markupsafe/_speedups.c
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/swig_ext/src/example.c
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/mingw/gfortran_vs2003_hack.c
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/tests/src/array_from_pyobj/wrapmodule.c
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/src/fortranobject.c
+    rm -rf ${IMAGE_ROOTFS}/usr/bin/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/xml/parsers/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/zmq/eventloop/minitornado/platform/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/backports/configparser/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/werkzeug/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/werkzeug/contrib/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/werkzeug/debug/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/psutil/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/chardet/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/urllib3/util/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/urllib3/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/urllib3/packages/ssl_match_hostname/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/urllib3/packages/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/requests/packages/urllib3/contrib/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/multiprocessing/dummy/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/multiprocessing/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/jinja2/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/jinja2/testsuite/res/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/jinja2/testsuite/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/markupsafe/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/click/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/flask/json/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/flask/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/simplejson/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/simplejson/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/simplejson/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/unittest/test/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/unittest/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/f2py_f90_ext/tests/test_foo.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/testing/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/linalg/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/lib/benchmarks/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/docs/usersguide/setup_example.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/docs/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/tools/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/sphinx/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/fft/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/fft/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/f2py_f90_ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/f2py_f90_ext/tests/*.pya
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/swig_ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/swig_ext/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/f2py_ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/f2py_ext/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/pyrex_ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/pyrex_ext/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/gen_ext/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/tests/gen_ext/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/fcompiler/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/distutils/command/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/numarray/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/testing/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/linalg/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/lib/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/lib/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/doc/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/core/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/core/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/compat/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/matrixlib/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/matrixlib/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/polynomial/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/polynomial/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/random/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/random/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/ma/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/ma/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/f2py/tests/*.py 
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/oldnumeric/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/oldnumeric/tests/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/plugins/*.py
+    rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/mibs/*
+    rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/mib2c*
+    rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/snmpconf-data
+    rm -rf ${IMAGE_ROOTFS}/boot/*
     find ${IMAGE_ROOTFS}/usr/lib/ipsec -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/libexec/ipsec/  -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/lib/  -name '*.o' | xargs rm -f
