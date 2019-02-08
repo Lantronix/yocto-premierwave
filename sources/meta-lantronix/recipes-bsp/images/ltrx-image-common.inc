@@ -385,7 +385,10 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/oldnumeric/tests/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/plugins/*.py
-    rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/mibs/
+    rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/mibs/*
+    rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/mib2c*
+    rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/snmpconf-data
+    rm -rf ${IMAGE_ROOTFS}/boot/*
     find ${IMAGE_ROOTFS}/usr/lib/ipsec -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/libexec/ipsec/  -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/lib/  -name '*.o' | xargs rm -f
