@@ -6,7 +6,7 @@ IMAGE_INSTALL_remove = "vsftpd"
 inherit extrausers
 
 # uncomment the following line to change "root" password to "rootYocto"
-EXTRA_USERS_PARAMS = "usermod -P Tdams@sgx_5150 root; "
+EXTRA_USERS_PARAMS = "usermod -P root root; "
 
 # uncomment the following line to disable "root" login
 #EXTRA_USERS_PARAMS = "userdel -r root; "
