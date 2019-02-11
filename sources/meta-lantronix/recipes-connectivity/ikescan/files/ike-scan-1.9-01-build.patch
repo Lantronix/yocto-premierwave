@@ -1,0 +1,11 @@
+--- ike-scan-1.9/configure	2007-01-24 04:56:52.000000000 -0800
++++ ike-scan-1.9-ltrx/configure	2014-03-28 23:52:46.820174432 -0700
+@@ -5008,7 +5008,7 @@
+ done
+ fi
+ 
+-LONG_LONG_INT_FORMAT=''
++LONG_LONG_INT_FORMAT='%lld'
+ 
+ case $pgac_cv_snprintf_long_long_int_format in
+   cross) echo "$as_me:$LINENO: result: cannot test (not on host machine)" >&5

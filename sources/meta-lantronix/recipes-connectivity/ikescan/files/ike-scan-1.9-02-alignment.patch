@@ -1,0 +1,33 @@
+--- ike-scan-1.9/ike-scan.c	2007-01-14 11:05:42.000000000 -0800
++++ ike-scan-1.9-ltrx/ike-scan.c	2014-03-29 00:05:49.422687311 -0700
+@@ -1475,9 +1475,13 @@
+  *	was received in the format: <IP-Address><TAB><Details>.
+  */
+ void
+-display_packet(int n, unsigned char *packet_in, host_entry *he,
++display_packet(int n, unsigned char *_packet_in, host_entry *he,
+                struct in_addr *recv_addr, unsigned *sa_responders,
+                unsigned *notify_responders, int quiet, int multiline) {
++   
++   unsigned char* packet_in;
++   packet_in=(unsigned char*)malloc(n+1);
++   memcpy(packet_in,_packet_in,n);
+    char *cp;			/* Temp pointer */
+    size_t bytes_left;		/* Remaining buffer size */
+    unsigned next;		/* Next Payload */
+@@ -1542,6 +1546,7 @@
+       printf("%sShort or malformed ISAKMP packet returned: %d bytes\n",
+              msg, n);
+       free(msg);
++      free(packet_in);
+       return;
+    }
+ /*
+@@ -1629,6 +1634,7 @@
+  */
+    printf("%s\n", msg);
+    free(msg);
++   free(packet_in);
+ }
+ 
+ /*
