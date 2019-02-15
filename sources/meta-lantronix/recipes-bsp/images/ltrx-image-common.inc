@@ -184,7 +184,6 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/lib/libnss_mdns*
     rm -rf ${IMAGE_ROOTFS}/usr/lib/libnss_nis*
     rm -rf ${IMAGE_ROOTFS}/lib/libnss_nis*
-    rm -rf ${IMAGE_ROOTFS}/lib/libsmartcols*
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/setuptools-2.1.2-py2.7.egg
     rm -rf ${IMAGE_ROOTFS}/sbin/badblocks
     rm -rf ${IMAGE_ROOTFS}/sbin/blockdev*
