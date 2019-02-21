@@ -58,6 +58,7 @@ IMAGE_INSTALL += "python"
 IMAGE_INSTALL += "python-pyserial"
 IMAGE_INSTALL += "python-pyusb"
 IMAGE_INSTALL += "python-pyzmq"
+IMAGE_INSTALL += "python-distutils"
 IMAGE_INSTALL += "python-setuptools"
 IMAGE_INSTALL += "quagga"
 IMAGE_INSTALL += "readline"
@@ -76,6 +77,7 @@ IMAGE_INSTALL += "zlib"
 apply_overlay() {
     cp -rf ${THISDIR}/files/overlay/* ${IMAGE_ROOTFS}/
     cp -rf ${THISDIR}/files/${MACHINE}-overlay/* ${IMAGE_ROOTFS}/
+    cp ${THISDIR}/files/ast.pyc ${IMAGE_ROOTFS}/usr/lib/python2.7/
 
     # un-expire account passwords
     sed -i 's/:0:0:99999/:10933:0:99999/' ${IMAGE_ROOTFS}/etc/shadow
@@ -174,7 +176,6 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/lib/libnss_mdns*
     rm -rf ${IMAGE_ROOTFS}/usr/lib/libnss_nis*
     rm -rf ${IMAGE_ROOTFS}/lib/libnss_nis*
-    rm -rf ${IMAGE_ROOTFS}/lib/libsmartcols*
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/setuptools-2.1.2-py2.7.egg
     rm -rf ${IMAGE_ROOTFS}/sbin/badblocks
     rm -rf ${IMAGE_ROOTFS}/sbin/blockdev*
@@ -383,6 +384,9 @@ EOF
     find ${IMAGE_ROOTFS}/usr/libexec/ipsec/  -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/lib/  -name '*.o' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/lib/  -name '*.a' | xargs rm -f
+#    find ${IMAGE_ROOTFS}/sbin/     -name 'fsck.ext*' | xargs rm -f
+#    find ${IMAGE_ROOTFS}/sbin/     -name 'mkfs*' | xargs rm -f
+#    rm  -rf ${IMAGE_ROOTFS}/usr/lib/opkg/alternatives/*
 
     mkdir -p ${IMAGE_ROOTFS}/root
 
