@@ -9,7 +9,7 @@ if [ "$1" == "--help" ] || [ "$1" == "-h" ] ; then
     echo -e "Supporting targets:"
     echo -e "pw2050 (Run \"./customer_set_target.sh pw2050\")"
     echo -e "sgx5150 (Run \"./customer_set_target.sh sgx5150\")"
-    echo -e "bat-c2 (Run \"./customer_set_target.sh bat-c2\")"
+    echo -e "bat_c2 (Run \"./customer_set_target.sh bat_c2\")"
     exit
 fi
 
@@ -28,9 +28,9 @@ elif [ "$prod_name" = "pw2050" ]; then
     #Updating target machine
     sed -i '/MACHINE =/c\MACHINE = "pw2050"' build/conf/local.conf
     cp sources/meta-lantronix/conf/pw2050_layer.conf sources/meta-lantronix/conf/layer.conf
-elif [ "$prod_name" = "bat-c2" ]; then
+elif [ "$prod_name" = "bat_c2" ]; then
     #Updating target machine
-    sed -i '/MACHINE =/c\MACHINE = "bat-c2"' build/conf/local.conf
+    sed -i '/MACHINE =/c\MACHINE = "bat_c2"' build/conf/local.conf
     cp sources/meta-lantronix/conf/bat-c2_layer.conf sources/meta-lantronix/conf/layer.conf
 fi
 
