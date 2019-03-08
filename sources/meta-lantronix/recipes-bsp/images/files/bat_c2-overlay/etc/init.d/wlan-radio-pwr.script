@@ -1,0 +1,42 @@
+#!/bin/sh
+
+###########################################################
+#
+# wlan-radio-pwr.script:
+#   Powers the Broadcom radio off or on. Drives the
+#   following lines:
+#
+# RADIO_POWER_EN    (GPIO PC7, Power to radio) active LOW
+# BT_PWR_DN         (GPIO PC10, Bluetooth On) active HIGH
+# WL_PWR_DN         (GPIO PC9, Radio power On) active HIGH
+#
+# $1: on = Power radio up.
+#     off = Power radio down.
+#
+###########################################################
+
+
+if [ "$#" -lt 1 ] ; then
+	echo "Call with on or off."
+	exit 1
+fi
+
+
+if [ "$1" == "on" ]; then
+	ltrx-radio-wlan-updown up
+	ltrx-radio-bt-updown up
+	if [ "$?" -ne "0" ] ; then
+	    exit 1
+	fi
+elif [ "$1" == "off" ]; then
+	ltrx-radio-down
+	if [ "$?" -ne "0" ] ; then
+	    exit 1
+	fi
+else
+	echo "Invalid command, must be on or off"
+	exit 1
+fi
+
+
+exit 0

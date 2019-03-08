@@ -1,0 +1,106 @@
+#!/bin/sh
+
+# udhcpc script edited by Tim Riker <Tim@Rikers.org>
+# LTRX customizations by Lantronix
+
+[ -z "$1" ] && echo "Error: should be called from udhcpc" && exit 1
+
+ETH_IP_FILE="/tmp/ethipaddress"
+DNS_CONF="/etc/sysconfig/dhcp_dns_${interface}"
+DOMAIN_CONF="/etc/sysconfig/dhcp_domain_${interface}"
+HOSTNAME_CONF="/etc/sysconfig/dhcp_hostname_${interface}"
+ROUTER_CONF="/etc/sysconfig/dhcp_router_${interface}"
+LTRX_NET_COMMON="/etc/sysconfig/network-scripts/ltrx-network-common.script"
+[ -n "$broadcast" ] && BROADCAST_ARG="broadcast $broadcast"
+[ -n "$subnet" ] && NETMASK_ARG="netmask $subnet"
+
+logger -p "user.debug" "dhcp-script event ${1}, interface ${interface}, ip: ${ip}, subnet: ${subnet}, broadcast: ${broadcast}"
+
+if [ ! -f $LTRX_NET_COMMON ]; then
+    logger -p "user.err" "dhcp-script: missing network script."
+    exit 1
+fi
+
+BRIDGE_CONF=/etc/brmgr-br0
+if [ -f $BRIDGE_CONF ]; then
+    . $BRIDGE_CONF
+else
+    BRIDGE_ETHDEV="eth0"
+    BRIDGE_WLANDEV="wlan0"
+fi
+
+case "$1" in
+
+    leasefail)
+        #nothing to do
+        exit 0
+        ;;
+
+    deconfig)
+        /sbin/ifconfig $interface 0.0.0.0
+        rm -f /etc/sysconfig/dhcp_ip_${interface}
+        ;;
+
+    renew|bound)
+        rm -f /etc/sysconfig/dhcp_ip_${interface}
+        echo "DHCP_IPADDR=$ip" > /etc/sysconfig/dhcp_ip_${interface}
+        /bin/chmod 777 /etc/sysconfig/dhcp_ip_${interface}
+        if [ -e /tmp/bridging.active -a $interface = $BRIDGE_WLANDEV -a $BRIDGE_TRANSPARENT = "disabled" -a "$BRIDGE_MODE" = "host" ] ; then
+            # Disable DHCP interception
+            ebtables -t broute -D BROUTING --concurrent -p 0x0800 -i $BRIDGE_WLANDEV --ip-protocol udp --ip-source-port 67:68 --ip-destination-port 67:68 -j DROP
+            while true; do
+                nrules=`ebtables -t broute --concurrent -L | grep  'ip-sport 67:68' | grep 'ip-dport 67:68' | wc -l`
+                if [ $nrules -eq 0 ]; then
+                    break
+                fi
+                ebtables -t broute -D BROUTING --concurrent -p 0x0800 -i $BRIDGE_WLANDEV --ip-protocol udp --ip-source-port 67:68 --ip-destination-port 67:68 -j DROP
+            done
+            if [ -e /tmp/bripaddress ] ; then
+                . /tmp/bripaddress
+                ip route add $BRCLIENT_IP dev $BRIDGE_ETHDEV
+            fi
+        fi
+        type="${interface:0:3}"
+        metric=`ltrx_getifinfo GETMETRIC ${interface} 0`
+        /sbin/ifconfig $interface $ip $BROADCAST_ARG $NETMASK_ARG
+        #handle newline in routes
+        IFS=$'\n'
+        routes=`route -n | grep ${interface}`
+        for route in ${routes}
+        do
+            naddress=`echo ${route} | awk -F' ' '{print $1}'`
+            nmetric=`echo ${route} | awk -F' ' '{print $5}'`
+            #skip the default route and static routes if any
+            if [ "$naddress" != "0.0.0.0" -a $nmetric -lt 100 ] ; then
+                route del -net ${naddress} netmask ${subnet} dev ${interface}
+                route add -net ${naddress} netmask ${subnet} dev ${interface} metric ${metric}
+            fi
+        done
+        unset IFS
+        # Remove the old dhcp files
+        rm -f $ROUTER_CONF
+        rm -f $DNS_CONF
+        rm -f $DOMAIN_CONF
+        rm -f $HOSTNAME_CONF
+        # Setup the new dhcp files for settings retrieved from server
+        if [ -n "$router" ] ; then
+            echo "DHCP_ROUTER=$router" > $ROUTER_CONF
+        fi
+        [ -n "$domain" ] && echo "DHCP_DOMAIN=\"$domain\"" > $DOMAIN_CONF
+        [ -n "$hostname" ] && echo "DHCP_HOST=$hostname" > $HOSTNAME_CONF
+        for nameserver in $dns ; do
+            logger -p "user.debug" "dhcp-script ${interface} nameserver $nameserver"
+            echo $nameserver >> $DNS_CONF
+        done
+        sync
+        #run network script to update resolv.conf and routes etc.
+        . $LTRX_NET_COMMON
+        ltrx_start_network ${interface}
+        logger -p "user.debug" "EXEC restart_l3_bridging $$ : ${interface} $ip"
+        restart_l3_bridging ${interface} $ip
+        logger -p "user.debug" "Unsolicited ARP mode, update your neighbors $$ : ${interface} $ip"
+        arping -I $interface -U $ip -c1
+        ;;
+esac
+
+exit 0

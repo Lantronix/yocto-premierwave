@@ -1,0 +1,43 @@
+#!/bin/sh
+
+# ltrx-radio-bt-updown:
+#   Brings up/down power to bluetooth by turning on the 32768 Hz clock and
+#   asserting the radio's BT_REG_ON high/low.
+#
+# BT_PWR_DN         (GPIO PC10, Bluetooth On = active HIGH)
+# WL_32KHZ          (PWM2 on PB13 peripheral B)
+#
+
+RADIO_UP_FILE=/tmp/radio.up
+
+if [ "$#" -ne 1 ] ; then
+	echo "Call with up or down." >&2
+	exit 1
+fi
+
+if [ ! -e $RADIO_UP_FILE ]; then
+#	echo "Bringing up radio subsystem"
+	ltrx-radio-up
+	if [ "$?" -ne "0" ] ; then
+		echo "Failed to bring up radio subsystem" >&2
+		exit 1
+	fi
+fi
+
+if [ "$1" == "up" ]; then
+	# enable pwm2 output (32768 Hz clock)
+	echo 1 > /sys/class/pwm/pwmchip0/pwm2/enable
+	usleep 10000
+	# power up bt section
+	echo 1 > /sys/class/gpio/pioC10/value
+elif [ "$1" == "down" ]; then
+	# power down bt section
+	echo 0 > /sys/class/gpio/pioC10/value
+	# disable pwm2 output (32768 Hz clock)
+	echo 0 > /sys/class/pwm/pwmchip0/pwm2/enable
+else
+	echo "Invalid command, must be up or down" >&2
+	exit 1
+fi
+
+exit 0

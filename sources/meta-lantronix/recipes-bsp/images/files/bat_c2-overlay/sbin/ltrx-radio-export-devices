@@ -1,0 +1,92 @@
+#!/bin/sh
+
+# ltrx-radio-export-devices:
+#   Exports devices used by the radio scripts.
+#
+# RADIO_POWER_EN    (GPIO PC7, Power to radio = active LOW)
+# BT_PWR_DN         (GPIO PC10, Bluetooth On = active HIGH)
+# WL_PWR_DN         (GPIO PC9, Wlan On = active HIGH)
+# WL_32KHZ          (PWM2 on PB13 peripheral B)
+#
+
+RADIO_DEVICES_FILE=/tmp/radio.devices
+
+wait_us_fileexists() {
+	wait_us=`expr $1`
+	wait_interval_us=100000
+
+	while [ $wait_us -gt 0 ]
+	do
+		[ -e $2 ] && return 0;
+		usleep $wait_interval_us
+		wait_us=`expr $wait_us - $wait_interval_us`
+	done
+	return 1
+}
+
+if [ -e $RADIO_DEVICES_FILE ]; then
+#	echo "Radio devices are already exported"
+	exit 0
+fi
+
+# Ensure the gpio's are exported
+# RADIO_POWER_EN
+if [ ! -e /sys/class/gpio/pioC7 ]; then
+	echo 71 > /sys/class/gpio/export
+	wait_us_fileexists 500000 /sys/class/gpio/pioC7
+	if [ "$?" -ne "0" ] ; then
+		echo "Failed to create GPIO C7" >&2
+		exit 1
+	fi
+	echo out > /sys/class/gpio/pioC7/direction
+fi
+# BT_PWR_DN
+if [ ! -e /sys/class/gpio/pioC10 ]; then
+	echo 74 > /sys/class/gpio/export
+	wait_us_fileexists 500000 /sys/class/gpio/pioC10
+	if [ "$?" -ne "0" ] ; then
+		echo "Failed to create GPIO C10" >&2
+		exit 1
+	fi
+	echo out > /sys/class/gpio/pioC10/direction
+fi
+# WL_PWR_DN
+if [ ! -e /sys/class/gpio/pioC9 ]; then
+	echo 73 > /sys/class/gpio/export
+	wait_us_fileexists 500000 /sys/class/gpio/pioC9
+	if [ "$?" -ne "0" ] ; then
+		echo "Failed to create GPIO C9" >&2
+		exit 1
+	fi
+	echo out > /sys/class/gpio/pioC9/direction
+fi
+
+# Ensure pwm channel 2 is exported
+# WL_32KHZ
+if [ ! -e /sys/class/pwm/pwmchip0/pwm2 ]; then
+	echo 2 > /sys/class/pwm/pwmchip0/export
+	wait_us_fileexists 500000 /sys/class/pwm/pwmchip0/pwm2
+	if [ "$?" -ne "0" ] ; then
+		echo "Failed to export pwm2" >&2
+		exit 1
+	fi
+fi
+
+# Start with everything off...
+# drive radio's BT_REG_ON low
+echo 0 > /sys/class/gpio/pioC10/value
+# drive radio's WL_REG_ON low
+echo 0 > /sys/class/gpio/pioC9/value
+# disable PMIC output 6 (radio's VDDIO)
+/usr/bin/i2cset -y 0 0x5b 0x61 0x41 b
+# disable VBAT to radio
+echo 1 > /sys/class/gpio/pioC7/value
+# configure pwm2 output for 32768 Hz. ticks are at 133.333 MHz
+echo 30518 > /sys/class/pwm/pwmchip0/pwm2/period
+echo 15259 > /sys/class/pwm/pwmchip0/pwm2/duty_cycle
+# disable pwm2 output
+echo 0 > /sys/class/pwm/pwmchip0/pwm2/enable
+
+touch $RADIO_DEVICES_FILE
+
+exit 0

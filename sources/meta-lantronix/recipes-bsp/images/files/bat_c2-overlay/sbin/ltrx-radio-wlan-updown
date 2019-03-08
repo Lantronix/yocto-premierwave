@@ -1,0 +1,34 @@
+#!/bin/sh
+
+# ltrx-radio-wlan-updown:
+#   Brings up/down power to wlan by asserting the radio's WL_REG_ON high/low.
+#
+# WL_PWR_DN         (GPIO PC9, Wlan On = active HIGH)
+#
+
+RADIO_UP_FILE=/tmp/radio.up
+
+if [ "$#" -ne 1 ] ; then
+	echo "Call with up or down." >&2
+	exit 1
+fi
+
+if [ ! -e $RADIO_UP_FILE ]; then
+#	echo "Bringing up radio subsystem"
+	ltrx-radio-up
+	if [ "$?" -ne "0" ] ; then
+		echo "Failed to bring up radio subsystem" >&2
+		exit 1
+	fi
+fi
+
+if [ "$1" == "up" ]; then
+	echo 1 > /sys/class/gpio/pioC9/value
+elif [ "$1" == "down" ]; then
+	echo 0 > /sys/class/gpio/pioC9/value
+else
+	echo "Invalid command, must be up or down" >&2
+	exit 1
+fi
+
+exit 0
