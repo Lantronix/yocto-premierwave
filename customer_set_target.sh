@@ -14,7 +14,7 @@ if [ "$1" == "--help" ] || [ "$1" == "-h" ] ; then
 fi
 
 prod_name=`echo "$1" | awk '{print tolower($0)}'`
-if [ "$prod_name" != "pw2050" ] && [ "$prod_name" != "sgx5150" ] && [ "$prod_name" != "bat-c2" ]; then
+if [ "$prod_name" != "pw2050" ] && [ "$prod_name" != "sgx5150" ] && [ "$prod_name" != "bat_c2" ]; then
     echo "$1 is not a valid target."
     $0 -h
     exit
