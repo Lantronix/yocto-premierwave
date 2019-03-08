@@ -1,0 +1,18 @@
+#/bin/sh
+
+#WLAN_MAC_FILE="/tmp/wlanmacaddress"
+#. $WLAN_MAC_FILE
+logger -p "user.debug" "ifplugd: eth0 is ${2}"
+
+if [ "${2}" == "up" ]; then
+    logger -p "user.debug" "ifplugd: restart ethernet"
+#   ifstop eth0
+#   ifstart eth0
+#   sleep 5
+else
+    logger -p "user.debug" "ifplugd: stop ethernet and start wlan"
+#   ifstop eth0
+#   ifstop wlan0
+#   ifstart wlan0 $WLAN_MAC
+fi
+

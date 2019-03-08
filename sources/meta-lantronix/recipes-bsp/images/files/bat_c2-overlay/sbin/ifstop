@@ -1,0 +1,120 @@
+#!/bin/sh
+
+set +e
+
+if [ "$#" -lt 1 ] ; then
+    logger -p "user.err" "ifstop: missing interface name"
+    exit 1
+fi
+
+IFCNAME=$1
+
+while true; do
+    if mkdir /var/lock/ltrx_if_start_stop_$IFCNAME; then
+        logger -p "user.debug" "ifstop: $$ : started ($1)"
+        break
+    else
+        logger -p "user.debug" "ifstop: $$ : waiting ($1)"
+        usleep 500000
+    fi
+done
+
+IFCBASE=/etc/sysconfig/network-scripts
+IFCFILE=$IFCBASE/ifcfg-$IFCNAME
+IFCNETWORKING=/etc/sysconfig/network_$IFCNAME
+LTRX_NET_COMMON="/etc/sysconfig/network-scripts/ltrx-network-common.script"
+ETH_IP_FILE="/tmp/ethipaddress"
+ETH_IPV6_FILE="/tmp/ethipv6address"
+BRIDGE_CONF=/etc/brmgr-br0
+
+logger -p "user.debug" "ifstop: $IFCNAME"
+
+if [ ! -f $LTRX_NET_COMMON ]; then
+    logger -p "user.err" "ifstop: missing network script"
+    rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
+    exit 1
+fi
+if [ ! -f $IFCFILE ]; then
+    logger -p "user.err" "ifstop: missing interface configuration"
+    rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
+    exit 2
+fi
+. $IFCFILE
+if [ "$ONBOOT" != "yes" ] ; then
+    logger -p "user.info" "ifstop: $IFCNAME is diabled"
+    rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
+    exit 0
+fi
+if [ -f $IFCNETWORKING ]; then
+    #disable networking for interface
+    echo "NETWORKING=no" > $IFCNETWORKING.tmp
+    cat $IFCNETWORKING | grep -v -e"NETWORKING[[:space:]]*=" >> $IFCNETWORKING.tmp
+    mv $IFCNETWORKING.tmp $IFCNETWORKING
+fi
+
+if [ -f $BRIDGE_CONF ]; then
+    . $BRIDGE_CONF
+else
+    BRIDGE_ETHDEV="eth0"
+    BRIDGE_WLANDEV="wlan0"
+fi
+
+if [ -e /tmp/bridging.active -a "$IFCNAME" = "$BRIDGE_WLANDEV" -a "$TRANSPARENT" = "enabled" -a "$NETWORKACCESS" = "enabled" ]; then
+    logger -p "user.debug" "ifstop: transparent bridging with network access ($BOOTPROTO configuration): save network information"
+    rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
+    exit 0
+fi
+
+# Stop autoip processes
+AUTOIP_START_PID_FILE=/var/run/start_autoipd.$IFCNAME.pid
+if [ -f $AUTOIP_START_PID_FILE ] ; then
+    kill `cat $AUTOIP_START_PID_FILE` 2>/dev/null
+    rm -f $AUTOIP_START_PID_FILE
+    logger -p "user.debug" "ifstop: $IFCNAME, stopped avahi-autoipd script"
+fi
+AUTOIP_PID_FILE=/var/run/avahi-autoipd.$IFCNAME.pid
+if [ -f $AUTOIP_PID_FILE ] ; then
+    kill `cat $AUTOIP_PID_FILE` 2>/dev/null
+    rm -f $AUTOIP_PID_FILE
+    logger -p "user.debug" "ifstop: $IFCNAME, stopped avahi-autoipd daemon"
+fi
+rm -f /tmp/autoip.$IFCNAME
+DHCP_PID_FILE=/var/run/udhcpc.$IFCNAME.pid
+if [ -f $DHCP_PID_FILE ] ; then
+    kill `cat /var/run/udhcpc.$IFCNAME.pid` 2>/dev/null
+    rm -f $DHCP_PID_FILE
+    logger -p "user.debug" "ifstop: $IFCNAME, stopped dhcp client"
+fi
+rm -f /etc/sysconfig/dhcp_hostname_$IFCNAME
+rm -f /etc/sysconfig/dhcp_domain_$IFCNAME
+rm -f /etc/sysconfig/dhcp_dns_$IFCNAME
+rm -f /etc/sysconfig/dhcp_router_$IFCNAME
+DHCP6_PID_FILE=/var/run/dhcp6.$IFCNAME.pid
+if [ -f $DHCP6_PID_FILE ] ; then
+    kill `cat /var/run/dhcp6.$IFCNAME.pid` 2>/dev/null
+    rm -f $DHCP6_PID_FILE
+    logger -p "user.debug" "ifstop: $IFCNAME, stopped dhcp6 client"
+fi
+rm -f /etc/sysconfig/dhcp6_dns_$IFCNAME
+rm -f /etc/sysconfig/dhcp6_domain_$IFCNAME
+
+if [ -e /tmp/bridging.active -a "$IFCNAME" = "$BRIDGE_WLANDEV" -a "$TRANSPARENT" = "disabled" -a "$BRIDGE_MODE" = "host" ]; then
+    # Disable DHCP interception (ipv6).
+    ebtables -t broute -D BROUTING --concurrent -i $BRIDGE_WLANDEV --proto ipv6 --ip6-protocol udp --ip6-source-port 546:547 --ip6-destination-port 546:547 -j DROP
+    # Disable DHCP interception (ipv4).
+    ebtables -t broute -D BROUTING --concurrent -p ipv4 -i $BRIDGE_WLANDEV --ip-protocol udp --ip-source-port 67:68 --ip-destination-port 67:68 -j DROP
+fi
+ifconfig $IFCNAME 0.0.0.0
+for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
+    ip -6 addr del $addr dev $IFCNAME scope global
+done
+#for addr in $(ip -6 addr show dev $IFCNAME scope link | grep inet6 | awk '{print $2}'); do
+#    ip -6 addr del $addr dev $IFCNAME scope link
+#done
+#run network script to update resolv.conf and routes etc.
+. $LTRX_NET_COMMON
+ltrx_start_network $IFCNAME
+
+logger -p "user.debug" "ifstop: $IFCNAME completed"
+rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
+exit 0

@@ -1,0 +1,172 @@
+#!/bin/sh
+#
+# bcmdhd radio driver stop/start/restart script
+#
+# $1 = command = stop|start|restart
+# $2/$3 = [mac] or [debug], in either order
+#       [mac] = "mac=xx:xx:xx:xx:xx:xx" format
+#       [debug] = "debug=<decimal value>" format
+
+
+WLAN_POWER_CTRL="/etc/init.d/wlan-radio-pwr.script"
+
+#
+# wait $1 microseconds for file $2 to exist
+# $1 is time in microseconds
+# $2 is file to wait for
+#
+wait_us_fileexists() {
+	wait_us=`expr $1`
+	wait_interval_us=100000
+
+	while [ $wait_us -gt 0 ]
+	do
+		[ -e $2 ] && return 0;
+		usleep $wait_interval_us
+		wait_us=`expr $wait_us - $wait_interval_us`
+	done
+	return 1
+}
+
+stop_radio_driver() {
+	rmmod bcmdhd.ko
+}
+
+stop_host_driver() {
+	rmmod atmel-mci
+}
+
+power_down() {
+	$WLAN_POWER_CTRL off
+	echo "Powering radio down..."
+}
+
+stop() {
+	stop_radio_driver > /dev/null 2>&1
+	stop_host_driver > /dev/null 2>&1
+	power_down > /dev/null 2>&1
+	usleep 50000
+	return 0
+}
+
+power_up() {
+	$WLAN_POWER_CTRL on
+	echo "Powering radio up..."
+}
+
+start_host_driver() {
+	insmod /lib/modules/`uname -r`/kernel/drivers/mmc/host/atmel-mci.ko
+	wait_us_fileexists 500000 /sys/module/atmel_mci
+	if [ "$?" -ne "0" ] ; then
+		echo "Failed to start atmel_mci host driver"
+		return 2
+	fi
+	wait_us_fileexists 1000000 /sys/bus/mmc/devices/mmc0:0001
+	if [ "$?" -ne "0" ] ; then
+		echo "Failed to find radio via atmel_mci host driver"
+		return 3
+	fi
+}
+
+start_radio_driver() {
+	if [ "$2" != "" ] ; then
+		insmod /lib/modules/`uname -r`/extra/bcmdhd.ko firmware_path="/lib/modules/firmware/fw_bcmdhd.bin" nvram_path="/lib/modules/firmware/bcmdhd.cal" ltrx_mac_addr=$1 dhd_msg_level=$2
+	else
+		insmod /lib/modules/`uname -r`/extra/bcmdhd.ko firmware_path="/lib/modules/firmware/fw_bcmdhd.bin" nvram_path="/lib/modules/firmware/bcmdhd.cal" ltrx_mac_addr=$1
+	fi
+	wait_us_fileexists 2000000 /sys/module/bcmdhd
+	if [ "$?" -ne "0" ] ; then
+		echo "Failed to start bcmdhd radio driver"
+		return 4
+	fi
+}
+
+start() {
+	power_up
+	usleep 100000
+	start_host_driver
+	lrc=$?
+	if [ "$lrc" -ne "0" ] ; then
+		stop
+		eval return $lrc
+	fi
+	start_radio_driver $1 $2
+	lrc=$?
+	if [ "$lrc" -ne "0" ] ; then
+		stop
+		eval return $lrc
+	fi
+}
+
+restart() {
+	stop
+	start $1 $2
+}
+
+##############################################################################
+# main...
+#
+
+# set mac and debug variables to empty
+mac=""
+debug=""
+
+# set default wlan mac address from kernel command line
+cat /proc/cmdline | grep wlanaddr=
+if [ "$?" = "0" ] ; then
+	mac=`cat /proc/cmdline | grep wlanaddr= | sed 's,.*wlanaddr=\(.*\),\1,' | cut -c 1-17`
+fi
+
+# check for optional mac and debug in $2
+if [ -n "$2" ] ; then
+	# first check if optional mac is passed
+	echo $2 | grep mac= > /dev/null
+	if [ "$?" = "0" ] ; then
+		mac=`echo $2 | cut -c5-21`
+	fi
+	# next check if optional debug is passed
+	echo $2 | grep debug= > /dev/null
+	if [ "$?" = "0" ] ; then
+		debug=`echo $2 | cut -c7-12`
+	fi
+fi
+
+# check for optional mac and debug in $3
+if [ -n "$3" ] ; then
+	# first check if optional mac is passed
+	echo $3 | grep mac= > /dev/null
+	if [ "$?" = "0" ] ; then
+		mac=`echo $3 | cut -c5-21`
+	fi
+	# next check if optional debug is passed
+	echo $3 | grep debug= > /dev/null
+	if [ "$?" = "0" ] ; then
+		debug=`echo $3 | cut -c7-12`
+	fi
+fi
+
+case "$1" in
+  stop)
+	stop
+	;;
+  start)
+	if [ "$mac" = "" ] ; then
+		echo "no mac address available for bcmdhd driver start"
+		exit 1
+	fi
+	start $mac $debug
+	;;
+  restart)
+	if [ "$mac" = "" ] ; then
+		echo "no mac address available for bcmdhd driver start"
+		exit 1
+	fi
+	restart $mac $debug
+	;;
+  *)
+	echo $"Usage: $0 {stop|start [mac]|restart [mac]}"
+	exit 1
+esac
+
+exit $?
+

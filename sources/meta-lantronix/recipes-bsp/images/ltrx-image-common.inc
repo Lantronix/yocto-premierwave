@@ -130,9 +130,13 @@ EOF
         ln -s ${bindir}/dhcp6c ${IMAGE_ROOTFS}/bin/dhcp6c
     fi
 
-    chmod 4755 ${IMAGE_ROOTFS}/bin/ltrx_cli
+    if [ -e ${IMAGE_ROOTFS}/${bindir}/ltrx_cli ]; then
+    	chmod 4755 ${IMAGE_ROOTFS}/bin/ltrx_cli
+    fi
     chmod 4755 ${IMAGE_ROOTFS}/usr/sbin/wpa_cli
-    chmod 4755 ${IMAGE_ROOTFS}/bin/ser_con
+    if [ -e ${IMAGE_ROOTFS}/${bindir}/ser_con ]; then
+    	chmod 4755 ${IMAGE_ROOTFS}/bin/ser_con
+    fi
     chmod 4755 ${IMAGE_ROOTFS}/usr/bin/traceroute.traceroute
     chmod 4755 ${IMAGE_ROOTFS}/usr/sbin/tcpdump
     chmod 4755 ${IMAGE_ROOTFS}/bin/ping.iputils
