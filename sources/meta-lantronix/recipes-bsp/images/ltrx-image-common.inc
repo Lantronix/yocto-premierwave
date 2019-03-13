@@ -72,6 +72,8 @@ IMAGE_INSTALL += "usbutils"
 IMAGE_INSTALL += "util-linux"
 IMAGE_INSTALL += "wide-dhcpv6"
 IMAGE_INSTALL += "zlib"
+IMAGE_INSTALL += "parprouted"
+IMAGE_INSTALL += "dhcp-relay"
 
 apply_overlay() {
     cp -rf ${THISDIR}/files/overlay/* ${IMAGE_ROOTFS}/
