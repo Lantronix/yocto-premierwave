@@ -24,6 +24,7 @@ EXTRA_OECONF += " \
                  ac_cv_func_daemon=yes \
                  ac_cv_func_warnx=yes \
                  ac_cv_func_arc4random=no \
+                 --with-localdbdir=/ltrx_private/ \
                 "
 
 do_install() {
