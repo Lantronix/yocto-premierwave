@@ -1,5 +1,5 @@
 DESCRIPTION = "Wide DHCPv6 is a program for supporting the DHCPv6 protocol."
-LICENSE = "MIT"
+LICENSE = "BSD"
 LIC_FILES_CHKSUM = "file://COPYRIGHT;md5=c180fcd362bda6abeae4ca1f7d7ac3fc"
 DEPENDS += "flex"
 
