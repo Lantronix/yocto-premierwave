@@ -13,17 +13,14 @@ DEPENDS = "libpcre openssl"
 
 # upstream: http://nginx.org/download/nginx-${PV}.tar.gz
 
-S = "${WORKDIR}/nginx-8.0.0.0R9_premierwave_uds2040"
+S = "${WORKDIR}/nginx-develop-1.6.1/"
 
 SRC_URI = " \
-	file://nginx-8.0.0.0R9_premierwave_uds2040.tar.gz \
-	file://nginx-cross.patch \
-	file://nginx.conf \
+	file://nginx-develop-1.6.1.tar.gz \
+    file://nginx.conf \
 	file://nginx.init \
 	file://nginx-volatile.conf \
 	file://nginx.service \
-	file://0001-add-http_auth_digest_module.patch \
-	file://0002-add-http_upload_module.patch \
 "
 SRC_URI[md5sum] = "2562320f1535e3e31d165e337ae94f21"
 SRC_URI[sha256sum] = "48e2787a6b245277e37cb7c5a31b1549a0bbacf288aa4731baacf9eaacdb481b"
@@ -35,42 +32,25 @@ CXXFLAGS_append = " -fPIE -pie"
 
 EXTRA_OECONF = "--with-ipv6"
 
-do_configure () {
-	if [ "${SITEINFO_BITS}" = "64" ]; then
-		PTRSIZE=8
-	else
-		PTRSIZE=4
-	fi
+do_configure[noexec] = "1"
 
-	./configure \
-	--crossbuild=Linux:${TUNE_ARCH} \
-	--with-endian=${@base_conditional('SITEINFO_ENDIANNESS', 'le', 'little', 'big', d)} \
-	--with-int=4 \
-	--with-long=${PTRSIZE} \
-	--with-long-long=8 \
-	--with-ptr-size=${PTRSIZE} \
-	--with-sig-atomic-t=${PTRSIZE} \
-	--with-size-t=${PTRSIZE} \
-	--with-off-t=${PTRSIZE} \
-	--with-time-t=${PTRSIZE} \
-	--with-sys-nerr=132 \
-	--conf-path=${sysconfdir}/nginx.conf \
-	--http-log-path=${localstatedir}/log/nginx/access.log \
-	--error-log-path=${localstatedir}/log/nginx/error.log \
-	--pid-path=/run/nginx/nginx.pid \
-	--prefix=${prefix} \
-	--with-http_ssl_module \
-	--without-http_ssi_module \
-	--without-http_uwsgi_module \
-	--with-pcre \
-	--with-http_realip_module \
-	--add-module=http_auth_digest_module \
-	--add-module=http_upload_module \
-	${EXTRA_OECONF}
+EXTRA_OEMAKE = "DESTDIR=${D} \
+                CFLAGS='${CFLAGS}' \
+                LDFLAGS='${LDFLAGS}' \
+                STAGING_DIR='${STAGING_DIR}' \
+                STRIPPROG='${STRIP}' \
+               "
+
+do_compile() {
+    oe_runmake 'DESTDIR=${D}'
 }
+
+INSANE_SKIP_${PN} = "installed-vs-shipped "
 
 do_install () {
 	oe_runmake 'DESTDIR=${D}' install
+    install -m 0755 -d ${D}/bin/
+    install -m 0755 ${S}/objs/nginx ${D}/bin/nginx
 	rm -fr ${D}${localstatedir}/run ${D}/run
 	if ${@base_contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
 		install -d ${D}${sysconfdir}/tmpfiles.d
@@ -80,7 +60,7 @@ do_install () {
 	install -d ${D}${sysconfdir}/${BPN}
 	ln -snf ${localstatedir}/run/${BPN} ${D}${sysconfdir}/${BPN}/run
 	install -d ${D}${localstatedir}/www/localhost
-	mv ${D}/usr/html ${D}${localstatedir}/www/localhost/
+	mv ${D}/usr/local/nginx/html ${D}${localstatedir}/www/localhost/
 	chown www:www-data -R ${D}${localstatedir}
 
 	install -d ${D}${sysconfdir}/init.d

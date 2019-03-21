@@ -79,6 +79,7 @@ IMAGE_INSTALL += "parprouted"
 IMAGE_INSTALL += "dhcp-relay"
 IMAGE_INSTALL += "socat"
 IMAGE_INSTALL += "sshpass"
+IMAGE_INSTALL += "nginx"
 
 apply_overlay() {
     cp -rf ${THISDIR}/files/overlay/* ${IMAGE_ROOTFS}/
@@ -162,6 +163,9 @@ EOF
     ln -sf /tmp ${IMAGE_ROOTFS}/run
     ln -sf /tmp ${IMAGE_ROOTFS}/var/spool
     ln -sf /tmp ${IMAGE_ROOTFS}/var/tmp
+    
+    rm -rf ${IMAGE_ROOTFS}/var/www/*
+    rmdir ${IMAGE_ROOTFS}/var/www
     mkdir ${IMAGE_ROOTFS}/var/www
 
     ln -sf /tmp/wpa_supplicant.current ${IMAGE_ROOTFS}/usr/sbin/wpa_supplicant
