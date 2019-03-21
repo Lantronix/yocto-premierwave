@@ -33,6 +33,7 @@ do_install () {
 PACKAGES =+ "${PN}-examples ${PN}-test ${PN}-klips"
 
 INSANE_SKIP_${PN} = "installed-vs-shipped "
+PARALLEL_MAKE = ""
 
 FILES_${PN} = "${sysconfdir} ${libdir}/ipsec/* ${sbindir}/* ${libexecdir}/ipsec/*"
 FILES_${PN}-dbg += "${libdir}/ipsec/.debug ${libexecdir}/ipsec/.debug"
