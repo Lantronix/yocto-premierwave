@@ -1,6 +1,6 @@
 SUMMARY = "A console-only image for the Lantronix pw2050 machine"
 
-IMAGE_FEATURES += "splash"
+# IMAGE_FEATURES += "splash"
 
 LICENSE = "MIT"
 
@@ -17,7 +17,7 @@ IMAGE_INSTALL += "avahi-daemon"
 IMAGE_INSTALL += "avahi-dnsconfd"
 IMAGE_INSTALL += "avahi-utils"
 IMAGE_INSTALL += "bash"
-IMAGE_INSTALL += "bluez5"
+# IMAGE_INSTALL += "bluez5"
 IMAGE_INSTALL += "bridge-utils"
 IMAGE_INSTALL += "busybox"
 IMAGE_INSTALL += "bzip2"
@@ -80,6 +80,7 @@ IMAGE_INSTALL += "dhcp-relay"
 IMAGE_INSTALL += "socat"
 IMAGE_INSTALL += "sshpass"
 IMAGE_INSTALL += "nginx"
+IMAGE_INSTALL += "net-snmp net-snmp-libs net-snmp-mibs net-snmp-server"
 
 apply_overlay() {
     cp -rf ${THISDIR}/files/overlay/* ${IMAGE_ROOTFS}/
@@ -393,6 +394,7 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/mibs/*
     rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/mib2c*
     rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/snmpconf-data
+    rm -f  ${IMAGE_ROOTFS}/etc/snmp/*
     rm -rf ${IMAGE_ROOTFS}/boot/*
     find ${IMAGE_ROOTFS}/usr/lib/ipsec -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/libexec/ipsec/  -name '*.old' | xargs rm -f
