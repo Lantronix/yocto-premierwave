@@ -155,6 +155,9 @@ EOF
     chmod 4755 ${IMAGE_ROOTFS}/sbin/ebtables
     chmod 4755 ${IMAGE_ROOTFS}/usr/sbin/iptables
 
+    openssl smime -encrypt -aes256 -in ${IMAGE_ROOTFS}/defaults/factory.xcr -outform PEM -out ${IMAGE_ROOTFS}/defaults/factory.xcr.tmp ${IMAGE_ROOTFS}/etc/ssl/misc/lantronix.crt
+    mv ${IMAGE_ROOTFS}/defaults/factory.xcr.tmp ${IMAGE_ROOTFS}/defaults/factory.xcr
+
 # Yocto compatibility fixes
     ln -sf /tmp ${IMAGE_ROOTFS}/var/cache
     mkdir ${IMAGE_ROOTFS}/var/empty/
