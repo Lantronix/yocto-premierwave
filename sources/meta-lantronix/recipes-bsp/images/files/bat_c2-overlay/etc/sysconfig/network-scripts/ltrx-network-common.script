@@ -26,10 +26,16 @@ restart_l3_bridging()
     local DHCP_CONF=/etc/sysconfig/dhcpd
     local DHCP_RELAY_MODE="no"
     local DHCP6_RELAY_MODE="no"
+    local WLAN_STATE=""
+    local EXTIP_V4=0
+    local EXTIP_V6=0
+    local EXTIP_COUNT=0
+    local BOOTPROTO=""
+    local BOOTPROTO6=""
     #or gateway WAN interface
     if [ -f  $VLAN_CONF ]; then
         . $VLAN_CONF
-        logger -p "user.debug" "restart_l3_bridging: interface: $THIS_IF, gateway: $ONBOOT, EXT_IF=$WAN_IF"
+        logger -p "user.debug" "restart_l3_bridging: interface: $THIS_IF, gateway: $ONBOOT, EXT_IF=$WAN_IF, BOOTPROTO: [$BOOTPROTO], BOOTPROTO6: [$BOOTPROTO6]"
         if [ "$ONBOOT" = "yes" -a "$WAN_IF" = "$THIS_IF" ]; then
             EXT_IP=$ASSIGNED_IPADDR
             EXT_IF=$WAN_IF
@@ -57,8 +63,14 @@ restart_l3_bridging()
             EXT_IP=$ASSIGNED_IPADDR
             EXT_IF=$BRIDGE_WLANDEV
             INT_IF=$BRIDGE_ETHDEV
+            local ETH_CONF=/etc/sysconfig/network-scripts/ifcfg-$BRIDGE_ETHDEV
+            if [ -f $ETH_CONF ]; then
+                . $ETH_CONF
+            fi
+            logger -p "user.debug" "restart_l3_bridging: ACTIVE interface: $THIS_IF, bridging: $BRIDGE_STATE, EXT_IF=$BRIDGE_WLANDEV, INT_IF=$INT_IF, BOOTPROTO: [$BOOTPROTO]"
             FORWARDING_LAYER="2"
-            logger -p "user.debug" "restart_l3_bridging: ACTIVE interface: $THIS_IF, bridging: $BRIDGE_STATE, EXT_IF=$BRIDGE_WLANDEV, INT_IF=$INT_IF"
+            WLAN_STATE=`wpa_cli -i $BRIDGE_WLANDEV 2>/dev/null | grep ^wpa_state= | awk -F'=' '{print $2}'`
+            logger -p "user.debug" "restart_l3_bridging: ACTIVE interface: $THIS_IF, bridging: $BRIDGE_STATE, EXT_IF=$BRIDGE_WLANDEV, state: [$WLAN_STATE], INT_IF=$INT_IF"
             if [ -f $DHCP_CONF ]; then
                 . $DHCP_CONF
                 if [ "$ONBOOT" = "yes" -a "$TYPE" = "relay" ]; then
@@ -71,30 +83,35 @@ restart_l3_bridging()
             logger -p "user.debug" "restart_l3_bridging: DHCP_RELAY_MODE: $DHCP_RELAY_MODE, DHCP_SERVER_IP: $DHCP_SERVER_IP"
         fi
     fi
-    logger -p "user.debug" "restart_l3_bridging: interface: $THIS_IF, forwarding: $FORWARDING_LAYER, assign $INT_IF"
+    EXTIP_V4=`ip addr show dev $EXT_IF 2>/dev/null | grep 'inet ' | wc -l`
+    EXTIP_V6=`ip addr show dev $EXT_IF 2>/dev/null | grep 'inet6 ' | wc -l`
+    EXTIP_COUNT=$(($EXTIP_V4 + $EXTIP_V6))
+    logger -p "user.debug" "restart_l3_bridging: interface: $THIS_IF, forwarding: $FORWARDING_LAYER, assign $INT_IF, $EXT_IF: ($EXTIP_COUNT) $EXTIP_V4 IPv4 and $EXTIP_V6 IPv6 addresses"
     if [ "$EXT_IF" != "" -a "$INT_IF" != "" ]; then
         #begin protected section
-        #use the same IP as the external IP for dhcprelay
-        for addr in $(ip -4 addr show dev $INT_IF | grep inet | awk '{print $2}'); do
-            ip -4 addr del $addr dev $INT_IF
-        done
-        #ifconfig $INT_IF $EXT_IP netmask 255.255.255.255
-        for addr in $(ip -4 addr show dev $EXT_IF | grep inet | awk '{print $2}' | awk -F'/' '{print $1}'); do
-            logger -p "user.debug" "restart_l3_bridging: forwarding: $FORWARDING_LAYER, assign $INT_IF IP: $addr"
-            ip -4 addr add $addr/32 dev $INT_IF
-        done
+        if [ "$BOOTPROTO" != "static" ]; then
+            #use the same IP as the external IP for dhcprelay
+            for addr in $(ip -4 addr show dev $INT_IF | grep inet | awk '{print $2}'); do
+                ip -4 addr del $addr dev $INT_IF
+            done
+            #ifconfig $INT_IF $EXT_IP netmask 255.255.255.255
+            for addr in $(ip -4 addr show dev $EXT_IF | grep inet | awk '{print $2}' | awk -F'/' '{print $1}'); do
+                logger -p "user.debug" "restart_l3_bridging: forwarding: $FORWARDING_LAYER, assign $INT_IF IP: $addr"
+                ip -4 addr add $addr/32 dev $INT_IF
+            done
+            for addr in $(ip -6 addr show dev $INT_IF scope global | grep inet6 | awk '{print $2}'); do
+                ip -6 addr del $addr dev $INT_IF scope global
+            done
+            for addr in $(ip -6 addr show dev $EXT_IF scope global | grep inet6 | awk '{print $2}'  | awk -F'/' '{print $1}'); do
+                logger -p "user.debug" "restart_l3_bridging: forwarding: $FORWARDING_LAYER, assign $INT_IF IP: $addr"
+                ip -6 addr add $addr/128 dev $INT_IF scope global
+            done
+        fi
         killall dhcrelay
         if [ "$DHCP_RELAY_MODE" = "yes" -a "$DHCP_SERVER_IP" != "" ]; then
             #Relay DHCP requests between clients and server
             dhcrelay -d -a -D -id $INT_IF -iu $EXT_IF $DHCP_SERVER_IP&#for IPv4
         fi
-        for addr in $(ip -6 addr show dev $INT_IF scope global | grep inet6 | awk '{print $2}'); do
-            ip -6 addr del $addr dev $INT_IF scope global
-        done
-        for addr in $(ip -6 addr show dev $EXT_IF scope global | grep inet6 | awk '{print $2}'  | awk -F'/' '{print $1}'); do
-            logger -p "user.debug" "restart_l3_bridging: forwarding: $FORWARDING_LAYER, assign $INT_IF IP: $addr"
-            ip -6 addr add $addr/128 dev $INT_IF scope global
-        done
         if [ "$DHCP6_RELAY_MODE" = "yes" ]; then
             #Relay DHCPv6 requests between clients and server
             dhcrelay -6 -d -l $INT_IF -u $EXT_IF& #for IPv6
