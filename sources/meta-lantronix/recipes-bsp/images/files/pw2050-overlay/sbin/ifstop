@@ -111,6 +111,9 @@ done
 #for addr in $(ip -6 addr show dev $IFCNAME scope link | grep inet6 | awk '{print $2}'); do
 #    ip -6 addr del $addr dev $IFCNAME scope link
 #done
+# Remove AutoIPv6 Conf - EAPoL
+sysctl -w net.ipv6.conf.$IFCNAME.autoconf=0
+sysctl -w net.ipv6.conf.$IFCNAME.accept_ra=0
 #run network script to update resolv.conf and routes etc.
 . $LTRX_NET_COMMON
 ltrx_start_network $IFCNAME
