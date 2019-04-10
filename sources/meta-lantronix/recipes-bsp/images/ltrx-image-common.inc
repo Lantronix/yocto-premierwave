@@ -170,6 +170,9 @@ EOF
     ln -sf /tmp ${IMAGE_ROOTFS}/var/spool
     ln -sf /tmp ${IMAGE_ROOTFS}/var/tmp
     
+    mkdir -p ${IMAGE_ROOTFS}/var/lib/
+    ln -sf /tmp ${IMAGE_ROOTFS}/var/lib/avahi-autoipd
+ 
     rm -rf ${IMAGE_ROOTFS}/var/www/*
     rmdir ${IMAGE_ROOTFS}/var/www
     mkdir ${IMAGE_ROOTFS}/var/www
