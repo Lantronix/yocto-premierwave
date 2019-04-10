@@ -1,0 +1,35 @@
+#!/bin/sh
+
+set +e
+
+if [ "$#" -lt 1 ] ; then
+    logger -p "user.err" "firewall: missing command enable/disable"
+    exit 1
+fi
+
+if [ "$1" = "enable" ] ; then
+#delete rules
+    iptables -D INPUT -i eth0 -j DROP
+    iptables -D OUTPUT -o eth0 -j DROP
+    iptables -D FORWARD -o eth0 -j DROP
+    ip6tables -D INPUT -i eth0 -j DROP
+    ip6tables -D OUTPUT -o eth0 -j DROP
+    ip6tables -D FORWARD -o eth0 -j DROP
+#add rules
+    iptables -I INPUT -i eth0 -j DROP
+    iptables -I OUTPUT -o eth0 -j DROP
+    iptables -I FORWARD -o eth0 -j DROP
+    ip6tables -I INPUT -i eth0 -j DROP
+    ip6tables -I OUTPUT -o eth0 -j DROP
+    ip6tables -I FORWARD -o eth0 -j DROP
+fi
+
+if [ "$1" = "disable" ] ; then
+#delete rules    
+    iptables -D INPUT -i eth0 -j DROP
+    iptables -D OUTPUT -o eth0 -j DROP
+    iptables -D FORWARD -o eth0 -j DROP
+    ip6tables -D INPUT -i eth0 -j DROP
+    ip6tables -D OUTPUT -o eth0 -j DROP
+    ip6tables -D FORWARD -o eth0 -j DROP
+fi
