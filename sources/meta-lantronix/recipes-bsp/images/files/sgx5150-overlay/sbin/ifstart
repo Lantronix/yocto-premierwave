@@ -38,61 +38,6 @@ if [ ! -f $LTRX_NET_COMMON ]; then
 fi
 
 logger -p "user.debug" "ifstart: interface: $IFCNAME, client mac: $CLIENT_MAC"
-#if this is the LAN bridge and DHCP relay is enabled
-if [ -f /etc/sysconfig/dhcpd ]; then
-    . /etc/sysconfig/dhcpd
-    if [ "$ONBOOT" = "yes" -a "$TYPE" = "relay" -a "$IFCNAME" = "$IFNAME" ]; then
-        #LAN bridge interface
-        local INT_IF=""
-        INT_IF=$IFNAME
-        #the IP is assigned from
-        local EXT_IP=""
-        local EXT_IF=""
-        if [ -f /etc/sysconfig/network-scripts/ifcfg-vlan0 ]; then
-            . /etc/sysconfig/network-scripts/ifcfg-vlan0
-            logger -p "user.debug" "ifstart: interface: $IFCNAME, gateway: $ONBOOT, EXT_IF=$WAN_IF"
-            if [ "$ONBOOT" = "yes" ]; then
-                EXT_IP=`ip -4 addr show dev $WAN_IF 2>/dev/null | grep inet | awk '{print \$2}' | awk -F'/' '{print \$1}' | tr -d '\n'`
-                EXT_IF=$WAN_IF
-            fi
-        fi
-        logger -p "user.debug" "ifstart: interface: $IFCNAME, assign $INT_IF IP: $EXT_IP"
-        if [ "$EXT_IF" != "" -a "$INT_IF" != "" ]; then
-            #begin protected section
-            #use the same IP as the external IP for dhcprelay
-            for addr in $(ip -4 addr show dev $INT_IF | grep inet | awk '{print $2}'); do
-                ip -4 addr del $addr dev $INT_IF
-            done
-            #ifconfig $INT_IF $EXT_IP netmask 255.255.255.255
-            for addr in $(ip -4 addr show dev $EXT_IF | grep inet | awk '{print $2}' | awk -F'/' '{print $1}'); do
-                logger -p "user.debug" "ifstart: forwarding: $FORWARDING_LAYER, assign $INT_IF IP: $addr"
-                ip -4 addr add $addr/32 dev $INT_IF
-            done
-            killall dhcrelay
-            #Relay DHCP requests between clients and server
-            dhcrelay -d -a -D -id $INT_IF -iu $EXT_IF $DHCP_SERVER_IP&#for IPv4
-
-            for addr in $(ip -6 addr show dev $INT_IF scope global | grep inet6 | awk '{print $2}'); do
-                ip -6 addr del $addr dev $INT_IF scope global
-            done
-            for addr in $(ip -6 addr show dev $EXT_IF scope global | grep inet6 | awk '{print $2}' | awk -F'/' '{print $1}'); do
-                logger -p "user.debug" "ifstart: forwarding: $FORWARDING_LAYER, assign $INT_IF IP: $addr"
-                ip -6 addr add $addr/128 dev $INT_IF scope global
-            done
-            #Relay DHCPv6 requests between clients and server
-            dhcrelay -6 -d -l $INT_IF -u $EXT_IF& #for IPv6
-
-            #Proxy ARP IP bridging daemon
-            kill -9 `pidof parprouted`
-            parprouted -d $INT_IF $EXT_IF 2>&1 1>/dev/kmsg&
-            #end protected section
-        fi
-        logger -p "user.debug" "ifstart: interface: $IFCNAME completed"
-        rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
-        exit 0
-    fi
-fi
-
 if [ ! -f $IFCFILE ]; then
     logger -p "user.err" "ifstart: missing interface configuration."
     rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
@@ -136,11 +81,11 @@ if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_WLANDEV ] ; then
 fi
 
 if [ -e /tmp/bridging.active -a $IFCNAME = $BRIDGE_WLANDEV -a $TRANSPARENT = "enabled" -a $NETWORKACCESS = "enabled" ] ; then
-    logger -p "user.debug" "ifstart: transparent bridging with network access ($BOOTPROTO configuration)"
+    logger -p "user.debug" "ifstart: transparent bridging with network access ($BOOTPROTO,$BOOTPROTO6 configuration)"
 fi
 
 if [ -e /tmp/bridging.active -a $IFCNAME = $BRIDGE_WLANDEV -a $TRANSPARENT = "enabled" -a $NETWORKACCESS = "disabled" ] ; then
-    logger -p "user.debug" "ifstart: transparent bridging without network access ($BOOTPROTO configuration)"
+    logger -p "user.debug" "ifstart: transparent bridging without network access ($BOOTPROTO,$BOOTPROTO6 configuration)"
     #in transparent mode (classic) wlan0 does not have an IP address
     echo 0 > /proc/sys/net/ipv6/conf/$IFCNAME/autoconf
     echo 0 > /proc/sys/net/ipv6/conf/$IFCNAME/accept_ra
@@ -173,24 +118,33 @@ fi
 
 # Interface BRIDGE_ETHDEV in bridging mode (network) will have the same IP as WLANDEV
 if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_ETHDEV -a $TRANSPARENT = "disabled" -a "$BRIDGE_MODE" = "network" ] ; then
-    logger -p "user.debug" "ifstart: transparent bridge (network) ($IFCNAME configuration)"
-    #use the same IP as the external IP
-    for addr in $(ip -4 addr show dev $IFCNAME | grep inet | awk '{print $2}'); do
-        ip -4 addr del $addr dev $IFCNAME
-    done
-    for addr in $(ip -4 addr show dev $BRIDGE_WLANDEV | grep inet | awk '{print $2}' | awk -F'/' '{print $1}'); do
-        logger -p "user.debug" "ifstart: assign $IFCNAME IP: $addr"
-        ip -4 addr add $addr/32 dev $IFCNAME
-    done
-    for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
-        ip -6 addr del $addr dev $IFCNAME scope global
-    done
-    for addr in $(ip -6 addr show dev $BRIDGE_WLANDEV scope global | grep inet6 | awk '{print $2}'  | awk -F'/' '{print $1}'); do
-        logger -p "user.debug" "ifstart: assign $IFCNAME IP: $addr"
-        ip -6 addr add $addr/128 dev $IFCNAME scope global
-    done
-    rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
-    exit 0
+    #if there is an external IP
+    WLAN_STATE=`wpa_cli -i $BRIDGE_WLANDEV 2>/dev/null | grep ^wpa_state= | awk -F'=' '{print $2}'`
+    WLANIP_V4=`ip addr show dev $BRIDGE_WLANDEV 2>/dev/null | grep 'inet ' | wc -l`
+    WLANIP_V6=`ip addr show dev $BRIDGE_WLANDEV 2>/dev/null | grep 'inet6 ' | wc -l`
+    WLANIP_COUNT=$(($WLANIP_V4 + $WLANIP_V6))
+    logger -p "user.debug" "ifstart: bridge (network) $BRIDGE_ETHDEV: $BOOTPROTO, $BOOTPROTO6, $BRIDGE_WLANDEV: [$WLAN_STATE], ($WLANIP_COUNT) $WLANIP_V4 IPv4 and $WLANIP_V6 IPv6 addresses"
+    if [ "$BOOTPROTO" != "static" ] ; then
+        logger -p "user.debug" "ifstart: bridge (network) ($IFCNAME configuration)"
+        #use the same IP as the external IP
+        for addr in $(ip -4 addr show dev $IFCNAME | grep inet | awk '{print $2}'); do
+            ip -4 addr del $addr dev $IFCNAME
+        done
+        for addr in $(ip -4 addr show dev $BRIDGE_WLANDEV | grep inet | awk '{print $2}' | awk -F'/' '{print $1}'); do
+            logger -p "user.debug" "ifstart: assign $IFCNAME IP: $addr"
+            ip -4 addr add $addr/32 dev $IFCNAME
+        done
+        for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
+            ip -6 addr del $addr dev $IFCNAME scope global
+        done
+        for addr in $(ip -6 addr show dev $BRIDGE_WLANDEV scope global | grep inet6 | awk '{print $2}'  | awk -F'/' '{print $1}'); do
+            logger -p "user.debug" "ifstart: assign $IFCNAME IP: $addr"
+            ip -6 addr add $addr/128 dev $IFCNAME scope global
+        done
+        rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
+        exit 0
+    fi
+    logger -p "user.debug" "ifstart: bridge (network) ($IFCNAME configuration), $BRIDGE_WLANDEV not associated or has no IP"
 fi
 
 DHCP_PID_FILE=/var/run/udhcpc.$IFCNAME.pid
@@ -444,6 +398,63 @@ else
         ip -6 addr del $addr dev $IFCNAME scope link
     done
 fi
+
+#if this is the LAN bridge and DHCP relay is enabled
+if [ -f /etc/sysconfig/dhcpd ]; then
+    . /etc/sysconfig/dhcpd
+    if [ "$ONBOOT" = "yes" -a "$TYPE" = "relay" -a "$IFCNAME" = "$IFNAME" ]; then
+        #LAN bridge interface
+        local INT_IF=""
+        INT_IF=$IFNAME
+        #the IP is assigned from
+        local EXT_IP=""
+        local EXT_IF=""
+        local BOOTPROTO=""
+        local BOOTPROTO6=""
+        if [ -f /etc/sysconfig/network-scripts/ifcfg-vlan0 ]; then
+            . /etc/sysconfig/network-scripts/ifcfg-vlan0
+            logger -p "user.debug" "ifstart: interface: $IFCNAME, gateway: $ONBOOT, EXT_IF=$WAN_IF"
+            if [ "$ONBOOT" = "yes" ]; then
+                EXT_IP=`ip -4 addr show dev $WAN_IF 2>/dev/null | grep inet | awk '{print \$2}' | awk -F'/' '{print \$1}' | tr -d '\n'`
+                EXT_IF=$WAN_IF
+            fi
+        fi
+        logger -p "user.debug" "ifstart: interface: $IFCNAME, assign $INT_IF IP: $EXT_IP, BOOTPROTO: [$BOOTPROTO], BOOTPROTO6: [$BOOTPROTO6]"
+        if [ "$EXT_IF" != "" -a "$INT_IF" != "" ]; then
+            #begin protected section
+            if [ "$BOOTPROTO" != "static" ]; then
+                #use the same IP as the external IP for dhcprelay
+                for addr in $(ip -4 addr show dev $INT_IF | grep inet | awk '{print $2}'); do
+                    ip -4 addr del $addr dev $INT_IF
+                done
+                #ifconfig $INT_IF $EXT_IP netmask 255.255.255.255
+                for addr in $(ip -4 addr show dev $EXT_IF | grep inet | awk '{print $2}' | awk -F'/' '{print $1}'); do
+                    logger -p "user.debug" "ifstart: forwarding: $FORWARDING_LAYER, assign $INT_IF IP: $addr"
+                    ip -4 addr add $addr/32 dev $INT_IF
+                done
+                for addr in $(ip -6 addr show dev $INT_IF scope global | grep inet6 | awk '{print $2}'); do
+                    ip -6 addr del $addr dev $INT_IF scope global
+                done
+                for addr in $(ip -6 addr show dev $EXT_IF scope global | grep inet6 | awk '{print $2}' | awk -F'/' '{print $1}'); do
+                    logger -p "user.debug" "ifstart: forwarding: $FORWARDING_LAYER, assign $INT_IF IP: $addr"
+                    ip -6 addr add $addr/128 dev $INT_IF scope global
+                done
+            fi
+            killall dhcrelay
+            #Relay DHCP requests between clients and server
+            dhcrelay -d -a -D -id $INT_IF -iu $EXT_IF $DHCP_SERVER_IP&#for IPv4
+
+            #Relay DHCPv6 requests between clients and server
+            dhcrelay -6 -d -l $INT_IF -u $EXT_IF& #for IPv6
+
+            #Proxy ARP IP bridging daemon
+            kill -9 `pidof parprouted`
+            parprouted -d $INT_IF $EXT_IF 2>&1 1>/dev/kmsg&
+            #end protected section
+        fi
+    fi
+fi
+
 logger -p "user.debug" "ifstart: interface: $IFCNAME completed"
 rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
 exit 0

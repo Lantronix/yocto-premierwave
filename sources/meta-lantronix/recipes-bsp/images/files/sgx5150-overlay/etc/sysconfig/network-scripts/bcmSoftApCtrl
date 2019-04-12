@@ -30,6 +30,7 @@ update_dhcp_server_config() {
     #dns-server
     echo "server=$4" >> "$DHCP_SERVER_CONFIG_FILE"
     echo "dhcp-option=option:dns-server,$4" >> "$DHCP_SERVER_CONFIG_FILE"
+    echo "dhcp-option=252,\"\n\"" >> "$DHCP_SERVER_CONFIG_FILE"
     sync
     return 0
 }
@@ -159,12 +160,13 @@ if [ "$1" == "start" ]; then
     IPV6_AAAA_RECORD=""
     if [ "$DHCPV6" == "yes" ]; then
         ip addr add $IPV6_ADDRESS dev wl0.1
-        echo "dhcp-range=$DHCP6_START,$DHCP6_END,12h" >> "$DHCP_SERVER_CONFIG_FILE"
-        echo "dhcp-option=option6:dns-server,[$IPV6_ADDRESS]" >> "$DHCP_SERVER_CONFIG_FILE"
+        echo "dhcp-range=$DHCP6_START,$DHCP6_END,slaac,64,24h" >> "$DHCP_SERVER_CONFIG_FILE"
+        IPV6_ROUTER_IP=`echo $IPV6_ADDRESS | awk -F'/' '{print $1}'`
+        echo "dhcp-option=option6:dns-server,[$IPV6_ROUTER_IP]" >> "$DHCP_SERVER_CONFIG_FILE"
         echo "enable-ra" >> "$DHCP_SERVER_CONFIG_FILE"
-        echo "ra-param=wl0.1,60,120" >> "$DHCP_SERVER_CONFIG_FILE"
+        echo "ra-param=wl0.1,60" >> "$DHCP_SERVER_CONFIG_FILE"
         sync
-        IPV6_AAAA_RECORD=",$IPV6_ADDRESS"
+        IPV6_AAAA_RECORD=",$IPV6_ROUTER_IP"
     else
         logger -p "user.info" "IPv6 is disabled on access point."
         echo 1 > /proc/sys/net/ipv6/conf/wl0.1/disable_ipv6
