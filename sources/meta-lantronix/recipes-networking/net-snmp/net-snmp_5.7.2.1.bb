@@ -7,21 +7,35 @@ LIC_FILES_CHKSUM = "file://README;beginline=3;endline=8;md5=7f7f00ba639ac8e8deb5
 
 DEPENDS = "openssl"
 
-S = "${WORKDIR}/netsnmp-${PV}/"
-
-SRC_URI = "file://netsnmp-${PV}.tar.gz\
+SRC_URI = "file://net-snmp-${PV}.tar.gz \
+        file://0001-Added-checks-for-printing-variables-with-wrong-types.patch \
         file://init \
         file://snmpd.conf \
         file://snmptrapd.conf \
+        file://systemd-support.patch \
         file://snmpd.service \
         file://snmptrapd.service \
+        file://ifmib.patch \
+        file://net-snmp-add-knob-whether-nlist.h-are-checked.patch \
+        file://fix-libtool-finish.patch \
+        file://net-snmp-testing-add-the-output-format-for-ptest.patch \
+        file://run-ptest \
+        file://0001-Fix-CVE-2014-2285.patch \
+        file://dont-return-incompletely-parsed-varbinds.patch \
+        file://net-snmp-5.7.2-fix-mib-timeout-values.patch \
+        file://netsnmp-002-pass-set.patch \
+        file://netsnmp-003-bridging-myaddr.patch \
+        file://netsnmp-004-fips.patch \
+        file://netsnmp-005-set_fips_mode.patch \
+        file://net-snmp.5.7.3-additional-crypto.patch \
 "
-SRC_URI[md5sum] = "9f682bd70c717efdd9f15b686d07baee"
-SRC_URI[sha256sum] = "e8dfc79b6539b71a6ff335746ce63d2da2239062ad41872fff4354cafed07a3e"
 
-inherit autotools update-rc.d siteinfo systemd pkgconfig
+SRC_URI[md5sum] = "a2c83518648b0f2a5d378625e45c0e18"
+SRC_URI[sha256sum] = "ac9105539971f7cfb1456a86d479e18e8a8b3712212595ad40504347ba5843da"
 
-EXTRA_OEMAKE = "INSTALL_PREFIX=${D} OTHERLDFLAGS='${LDFLAGS}' HOST_CPPFLAGS='${BUILD_CPPFLAGS}'"
+inherit autotools update-rc.d siteinfo systemd
+
+EXTRA_OEMAKE = "INSTALL_PREFIX=${D}"
 
 PARALLEL_MAKE = ""
 CCACHE = ""
@@ -30,47 +44,47 @@ TARGET_CC_ARCH += "${LDFLAGS}"
 
 PACKAGECONFIG ??= ""
 PACKAGECONFIG[elfutils] = "--with-elf, --without-elf, elfutils"
-PACKAGECONFIG[libnl] = "--with-nl, --without-nl, libnl"
 
-do_configure[noexec] = "1"
-do_package_qa[noexec] = "1"
+EXTRA_OECONF = "--disable-embedded-perl \
+                --with-perl-modules=no \
+                --enable-shared \
+                --disable-manuals \
+                --with-defaults \
+                --with-persistent-directory=/tmp/ \
+                --with-agentx-socket=/tmp/agentx \
+                --with-sys-contact="root" --with-sys-location="Unknown" \
+                --with-default-snmp-version="3" \
+                ${@base_conditional('SITEINFO_ENDIANNESS', 'le', '--with-endianness=little', '--with-endianness=big', d)}"
 
-EXTRA_OEMAKE = "DESTDIR=${D} \
-                CFLAGS='${CFLAGS}' \
-                LDFLAGS='${LDFLAGS}' \
-                STAGING_DIR='${STAGING_DIR}' \
-                STRIPPROG='${STRIP}' \
-               "
+# net-snmp needs to have mib-modules=smux enabled to enable quagga to support snmp
+EXTRA_OECONF += "--with-mib-modules=smux"
+EXTRA_OECONF += "--with-out-mib-modules=mibII/system_mib"
 
-do_compile() {
-	echo "------${S}-----"
-	make -j1 -C ${S}
-	
+CACHED_CONFIGUREVARS = " \
+    ac_cv_header_valgrind_valgrind_h=no \
+    ac_cv_header_valgrind_memcheck_h=no \
+    ac_cv_NETSNMP_CAN_USE_SYSCTL=no \
+"
+
+do_configure_prepend() {
+    export PERLPROG="${bindir}/env perl"
 }
 
-INSANE_SKIP_${PN} = "ldflags"
-INSANE_SKIP_${PN}-dev = "ldflags "
-
-do_install() {
-	make -j1 'DESTDIR=${D}' -C ${S} install
-}
 do_install_append() {
-    chrpath -d ${D}${sbindir}/snmptrapd
-    chrpath -d ${D}${bindir}/snmpstatus
-    chrpath -d ${D}${sbindir}/snmpd
-    chrpath -d ${D}${libdir}/libnetsnmpagent.so.30.0.2
     install -d ${D}${sysconfdir}/snmp
     install -d ${D}${sysconfdir}/init.d
     install -m 755 ${WORKDIR}/init ${D}${sysconfdir}/init.d/snmpd
     install -m 644 ${WORKDIR}/snmpd.conf ${D}${sysconfdir}/snmp/
     install -m 644 ${WORKDIR}/snmptrapd.conf ${D}${sysconfdir}/snmp/
+    sed -e "s@-I/usr/include@@g" \
+        -e "s@^prefix=.*@prefix=${STAGING_DIR_HOST}@g" \
+        -e "s@^exec_prefix=.*@exec_prefix=${STAGING_DIR_HOST}@g" \
+        -e "s@^includedir=.*@includedir=${STAGING_INCDIR}@g" \
+        -e "s@^libdir=.*@libdir=${STAGING_LIBDIR}@g" \
+        -i ${D}${bindir}/net-snmp-config
     install -d ${D}${systemd_unitdir}/system
     install -m 0644 ${WORKDIR}/snmpd.service ${D}${systemd_unitdir}/system
     install -m 0644 ${WORKDIR}/snmptrapd.service ${D}${systemd_unitdir}/system
-    sed    -e "s@^NSC_SRCDIR=.*@NSC_SRCDIR=.@g" \
-        -i ${D}${bindir}/net-snmp-create-v3-user
-    sed    -e "s@^NSC_SRCDIR=.*@NSC_SRCDIR=.@g" \
-        -i ${D}${bindir}/net-snmp-config
 }
 
 do_install_ptest() {
@@ -78,7 +92,7 @@ do_install_ptest() {
     for i in ${S}/dist ${S}/include ${B}/include ${S}/mibs ${S}/configure \
         ${B}/net-snmp-config ${S}/testing; do
         if [ -e "$i" ]; then
-            cp -R --no-dereference --preserve=mode,links -v "$i" ${D}${PTEST_PATH}
+            cp -a "$i" ${D}${PTEST_PATH}
         fi
     done
     echo `autoconf -V|awk '/autoconf/{print $NF}'` > ${D}${PTEST_PATH}/dist/autoconf-version
@@ -97,13 +111,6 @@ net_snmp_sysroot_preprocess () {
     if [ -e ${D}${bindir}/net-snmp-config ]; then
         install -d ${SYSROOT_DESTDIR}${bindir_crossscripts}/
         install -m 755 ${D}${bindir}/net-snmp-config ${SYSROOT_DESTDIR}${bindir_crossscripts}/
-        sed -e "s@-I/usr/include@-I${STAGING_INCDIR}@g" \
-            -e "s@^prefix=.*@prefix=${STAGING_DIR_HOST}${prefix}@g" \
-            -e "s@^exec_prefix=.*@exec_prefix=${STAGING_EXECPREFIXDIR}@g" \
-            -e "s@^includedir=.*@includedir=${STAGING_INCDIR}@g" \
-            -e "s@^libdir=.*@libdir=${STAGING_LIBDIR}@g" \
-            -e "s@^NSC_SRCDIR=.*@NSC_SRCDIR=${S}@g" \
-          -i  ${SYSROOT_DESTDIR}${bindir_crossscripts}/net-snmp-config
     fi
 }
 
