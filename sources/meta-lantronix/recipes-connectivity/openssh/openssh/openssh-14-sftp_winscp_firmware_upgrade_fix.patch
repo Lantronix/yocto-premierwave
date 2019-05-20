@@ -1,0 +1,14 @@
+diff -Naur openssh-7.6p1/sftp-server.c ltrx_openssh-7.6p1/sftp-server.c
+--- openssh-7.6p1/sftp-server.c	2019-05-13 15:36:53.974453769 +0530
++++ ltrx_openssh-7.6p1/sftp-server.c	2019-05-13 16:43:51.655396298 +0530
+@@ -740,7 +740,9 @@
+ 	char* fname = basename(dirb);
+         if ((strcmp(dir, "/ltrx_user")==0) &&
+ 		strlen(fname) > 4 &&
+-		strcasecmp(fname + strlen(fname) - 4, ".rom") == 0
++		(strcasecmp(fname + strlen(fname) - 4, ".rom") == 0 ||
++		strcasecmp(fname + strlen(fname) - 13, ".rom.filepart") == 0 
++                )
+ 
+         )
+         {

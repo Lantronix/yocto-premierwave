@@ -1,0 +1,46 @@
+diff -Naur openssh-7.6p1/sftp-server.c ltrx_openssh-7.6p1/sftp-server.c
+--- openssh-7.6p1/sftp-server.c	2017-10-03 01:04:26.000000000 +0530
++++ ltrx_openssh-7.6p1/sftp-server.c	2019-05-08 00:45:34.601482085 +0530
+@@ -39,6 +39,7 @@
+ #include <time.h>
+ #include <unistd.h>
+ #include <stdarg.h>
++#include <libgen.h>
+
+ #include "xmalloc.h"
+ #include "sshbuf.h"
+@@ -685,6 +686,24 @@
+ 	    (r = decode_attrib(iqueue, &a)) != 0)
+ 		fatal("%s: buffer error: %s", __func__, ssh_err(r));
+
++	char* dirc = strdup(name);
++	char* dirb = strdup(name);
++
++	char* dir = dirname(dirc);
++	char* fname = basename(dirb);
++        if ((strcmp(dir, "/ltrx_user")==0) &&
++		strlen(fname) > 4 &&
++		strcasecmp(fname + strlen(fname) - 4, ".rom") == 0
++
++        )
++        {
++                int size = strlen("/tmp/firmware.rom")+1;
++                name = realloc(name, size);
++                memset(name, 0, size);
++                memcpy(name, "/tmp/firmware.rom", size);
++        }
++        free(dirc);
++        free(dirb);
+ 	debug3("request %u: open flags %d", id, pflags);
+ 	flags = flags_from_portable(pflags);
+ 	mode = (a.flags & SSH2_FILEXFER_ATTR_PERMISSIONS) ? a.perm : 0666;
+@@ -790,7 +809,8 @@
+ 	if (fd < 0)
+ 		status = SSH2_FX_FAILURE;
+ 	else {
+-		if (!(handle_to_flags(handle) & O_APPEND) &&
++		if (!(strstr(handle_to_name(handle),".rom")!=NULL) &&
++			!(handle_to_flags(handle) & O_APPEND) &&
+ 				lseek(fd, off, SEEK_SET) < 0) {
+ 			status = errno_to_portable(errno);
+ 			error("process_write: seek failed");

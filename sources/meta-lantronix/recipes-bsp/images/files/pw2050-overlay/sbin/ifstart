@@ -442,7 +442,7 @@ if [ -f /etc/sysconfig/dhcpd ]; then
             fi
             killall dhcrelay
             #Relay DHCP requests between clients and server
-            dhcrelay -d -a -D -id $INT_IF -iu $EXT_IF $DHCP_SERVER_IP&#for IPv4
+            dhcrelay -d -a -D -id $INT_IF -iu $EXT_IF -U $EXT_IF $DHCP_SERVER_IP&#for IPv4
 
             #Relay DHCPv6 requests between clients and server
             dhcrelay -6 -d -l $INT_IF -u $EXT_IF& #for IPv6

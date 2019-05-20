@@ -1,0 +1,75 @@
+diff -Naur openssh-7.6p1/sftp-server.c ltrx_openssh-7.6p1/sftp-server.c
+--- openssh-7.6p1/sftp-server.c	2019-05-10 23:09:28.600033921 +0530
++++ ltrx_openssh-7.6p1/sftp-server.c	2019-05-10 23:42:10.308779297 +0530
+@@ -673,6 +673,53 @@
+ 	sshbuf_free(msg);
+ }
+ 
++static int
++ltrx_check_fwupdate_permission(char* name)
++{
++    int rc = 0;
++    if (strcmp(name, "/tmp/firmware.rom") != 0)
++    {
++        //this is ok
++        return 1;
++    }
++
++    int fd = open("/etc/vsftpd/firmware_user_list", O_RDONLY);
++    if (fd < 0)
++    {
++        rc = 0;
++    }
++    else
++    {
++        struct stat st;
++        fstat(fd, &st);
++        int size = st.st_size;
++
++        char *buf = malloc(size);
++        if(buf == NULL)
++        {
++            rc = 0;
++        }
++        else
++        {
++            read(fd, buf, size);
++            char *token = strtok(buf, "\r\n");
++            while (token != NULL)
++            {
++                if (
++                    strcmp(token, pw->pw_name) == 0
++                )
++                {
++                    rc = 1;
++                }
++                token = strtok(NULL, "\r\n");
++            }
++            free(buf);
++        }
++        close(fd);
++    }
++    return rc;
++}
++
+ static void
+ process_open(u_int32_t id)
+ {
+@@ -702,6 +749,17 @@
+                 memset(name, 0, size);
+                 memcpy(name, "/tmp/firmware.rom", size);
+         }
++
++        if(0==ltrx_check_fwupdate_permission(name))
++        {
++                logit("Permission denied.");
++                status = SSH2_FX_PERMISSION_DENIED;
++                send_status(id, status);
++		free(dirc);
++		free(dirb);
++                return;
++        }
++
+         free(dirc);
+         free(dirb);
+ 	debug3("request %u: open flags %d", id, pflags);

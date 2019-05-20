@@ -25,7 +25,10 @@ SRC_URI = "http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${PV}.tar
            file://sshd_check_keys \
            file://add-test-support-for-busybox.patch \
            file://openssh-10-set_fips_mode.patch \
-           file://openssh-11-sets_rsa_key_size.patch \ 
+           file://openssh-11-sets_rsa_key_size.patch \
+	   file://openssh-12-sftp_firmware_upgrade.patch \
+	   file://openssh-13-sftp_firmware_upgrade.patch \
+	   file://openssh-14-sftp_winscp_firmware_upgrade_fix.patch \
            "
 
 PAM_SRC_URI = "file://sshd"
