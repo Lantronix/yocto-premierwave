@@ -17,10 +17,10 @@
 
 int main(void)
 {
-    int ret;
+    int ret = -1;
     /* init the config and it is must before controlling the CP */
     ret = cp_config_init();
-    if (ret != 0)
+    if (ret < 0)
     {
         printf("Not Successfull\n");
         return ret;
@@ -28,7 +28,7 @@ int main(void)
 
     /* Set Direction of CP for output */
     ret = cp_set_direction_out(CP1);
-    if (ret != 0)
+    if (ret < 0)
     {
         printf("Not Successfull\n");
         return ret;
@@ -36,7 +36,7 @@ int main(void)
 
     /* After setting direction to make it High*/
     ret = cp_set_output_high(CP1);
-    if (ret != 0)
+    if (ret < 0)
     {
         printf("Not Successfull\n");
         return ret;
@@ -45,7 +45,7 @@ int main(void)
     /* Getting the CP Value when it is an Input or Output */
     int p = -1;
     ret = cp_get_pin_value(CP1, &p);
-    if (ret != 0)
+    if (ret < 0)
     {
         printf("Not Successfull\n");
         return ret;
@@ -53,7 +53,7 @@ int main(void)
 
     /* After setting direction to make it Low*/
     ret = cp_set_output_low(CP1);
-    if (ret != 0)
+    if (ret < 0)
     {
         printf("Not Successfull\n");
         return ret;
@@ -61,7 +61,7 @@ int main(void)
 
     /* Set Direction of CP for input */
     ret = cp_set_direction_in(CP2);
-    if (ret != 0)
+    if (ret < 0)
     {
         printf("Not Successfull\n");
         return ret;
@@ -69,7 +69,7 @@ int main(void)
 
     /* To set active low */
     ret = cp_set_active_low(CP2);
-    if (ret != 0)
+    if (ret < 0)
     {
         printf("Not Successfull\n");
         return ret;
@@ -77,7 +77,7 @@ int main(void)
 
     /* To unset active low */
     ret = cp_set_active_high(CP2);
-    if (ret != 0)
+    if (ret < 0)
     {
         printf("Not Successfull\n");
         return ret;
