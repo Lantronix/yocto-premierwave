@@ -64,6 +64,7 @@ IMAGE_INSTALL += "python-pyusb"
 IMAGE_INSTALL += "python-pyzmq"
 IMAGE_INSTALL += "python-distutils"
 IMAGE_INSTALL += "python-setuptools"
+IMAGE_INSTALL += "python-importlib"
 IMAGE_INSTALL += "quagga"
 IMAGE_INSTALL += "readline"
 IMAGE_INSTALL += "rng-tools"
@@ -82,6 +83,7 @@ IMAGE_INSTALL += "socat"
 IMAGE_INSTALL += "sshpass"
 IMAGE_INSTALL += "nginx"
 IMAGE_INSTALL += "net-snmp net-snmp-libs net-snmp-mibs net-snmp-server"
+IMAGE_INSTALL += "strace"
 
 apply_overlay() {
     cp -rf ${THISDIR}/files/overlay/* ${IMAGE_ROOTFS}/
