@@ -1,21 +1,19 @@
 SUMMARY = "Pyzmq provides Zero message queue access for the Python language"
 HOMEPAGE = "http://zeromq.org/bindings:python"
-SECTION = "devel/python"
-LICENSE = "BSD"
-LIC_FILES_CHKSUM = "file://COPYING.BSD;md5=11c65680f637c3df7f58bbc8d133e96e"
+LICENSE = "BSD & LGPL-3.0"
+LIC_FILES_CHKSUM = "file://COPYING.BSD;md5=11c65680f637c3df7f58bbc8d133e96e \
+                    file://COPYING.LESSER;md5=12c592fa0bcfff3fb0977b066e9cb69e"
 DEPENDS = "zeromq"
 
-SRC_URI = "https://pypi.python.org/packages/source/p/pyzmq/pyzmq-${PV}.tar.gz \
-	file://club-rpath-out.patch \
-"
-SRC_URI[md5sum] = "b54a2209a4efed93ed00282d949db8d9"
-SRC_URI[sha256sum] = "8e6fbe2999204456216a2da62429277117ed1761326bce00e48a0443ae3574a7"
+FILESEXTRAPATHS_prepend := "${THISDIR}/python-pyzmq:"
 
-S = "${WORKDIR}/pyzmq-${PV}"
+SRC_URI += "file://club-rpath-out.patch"
+SRC_URI[md5sum] = "5a6ed2085bc5e96aa5513fc5cd4a819f"
+SRC_URI[sha256sum] = "8b319805f6f7c907b101c864c3ca6cefc9db8ce0791356f180b1b644c7347e4c"
 
-inherit setuptools pkgconfig
+inherit pypi pkgconfig
 
-RDEPENDS_${PN} += "python-multiprocessing"
+RDEPENDS_${PN} += "${PYTHON_PN}-multiprocessing"
 
 FILES_${PN}-dbg =+ "${PYTHON_SITEPACKAGES_DIR}/zmq/backend/cython/.debug"
 
