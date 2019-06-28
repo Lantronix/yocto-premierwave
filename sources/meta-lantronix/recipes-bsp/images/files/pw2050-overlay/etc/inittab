@@ -44,12 +44,6 @@ null::sysinit:/bin/chmod -R o-w,o+r,g+rw /ltrx_user &
 null::sysinit:/bin/mkdir -p /etc/features &
 null::sysinit:/bin/mkdir -p /etc/ssl/clientcerts &
 
-# Put a getty on the serial port
-ttyS0::respawn:/sbin/getty ttyS0 115200 vt100
-#ttyGS0::respawn:/sbin/getty ttyGS0 115200 vt100
-#ttyS0::respawn:-/bin/sh
-#ttyGS0::respawn:-/bin/sh
-
 null::sysinit:/bin/mkdir -p /var/db
 null::sysinit:/bin/mkdir -p /var/lib/ebtables/
 null::sysinit:/bin/rm -rf /var/lib/ebtables/*
@@ -89,6 +83,12 @@ null::sysinit:/bin/ltrx_as > /dev/null 2>&1 &
 #null::sysinit:/usr/sbin/avahi-daemon --no-drop-root &>/dev/null
 #null::sysinit:/etc/init.d/S50avahi-daemon start &
 null::sysinit:/bin/netman &
+
+# Put a getty on the serial port
+ttyS0::respawn:/sbin/getty ttyS0 115200 vt100
+#ttyGS0::respawn:/sbin/getty ttyGS0 115200 vt100
+#ttyS0::respawn:-/bin/sh
+#ttyGS0::respawn:-/bin/sh
 
 # Stuff to do before rebooting
 null::shutdown:/sbin/hwclock --utc --systohc

@@ -39,6 +39,7 @@ else
     BRIDGE_ETHDEV="eth0"
     BRIDGE_WLANDEV="wlan0"
 fi
+IFCBASE=/etc/sysconfig/network-scripts
 
 if [ -x /bin/ip -o -x /sbin/ip ] ; then
 
@@ -48,9 +49,16 @@ if [ -x /bin/ip -o -x /sbin/ip ] ; then
         BIND)
             ip addr add "$3"/16 brd 169.254.255.255 label "$2:avahi" scope link dev "$2"
             if [ -e /tmp/bridging.active -a $2 = $BRIDGE_WLANDEV ] ; then
-                echo "ETH_IP=$3" > $ETH_IP_FILE
-                /bin/chmod 777 $ETH_IP_FILE
-                ip addr add "$3"/16 brd 169.254.255.255 label "${BRIDGE_ETHDEV}:avahi" scope link dev $BRIDGE_ETHDEV
+                IFCFILE=$IFCBASE/ifcfg-$BRIDGE_ETHDEV
+                if [ ! -f $IFCFILE ]; then
+                    logger -p "user.err" "avahi-autoipd: missing bridge ethernet interface configuration."
+                fi
+                . $IFCFILE
+                if [ "$BOOTPROTO" != "static" ]; then
+                    echo "ETH_IP=$3" > $ETH_IP_FILE
+                    /bin/chmod 777 $ETH_IP_FILE
+                    ip addr add "$3"/16 brd 169.254.255.255 label "${BRIDGE_ETHDEV}:avahi" scope link dev $BRIDGE_ETHDEV
+                fi
                 sleep 1
             fi
             type="${2:0:3}"
@@ -88,8 +96,15 @@ if [ -x /bin/ip -o -x /sbin/ip ] ; then
         CONFLICT|UNBIND|STOP)
             ip addr del "$3"/16 brd 169.254.255.255 label "$2:avahi" scope link dev "$2"
             if [ -e /tmp/bridging.active -a $2 = $BRIDGE_WLANDEV ] ; then
-                ip addr del "$3"/16 brd 169.254.255.255 label "${BRIDGE_ETHDEV}:avahi" scope link dev $BRIDGE_ETHDEV
-                ifconfig "${BRIDGE_ETHDEV}:avahi" down
+                IFCFILE=$IFCBASE/ifcfg-$BRIDGE_ETHDEV
+                if [ ! -f $IFCFILE ]; then
+                    logger -p "user.err" "avahi-autoipd: missing bridge ethernet interface configuration."
+                fi
+                . $IFCFILE
+                if [ "$BOOTPROTO" != "static" ]; then
+                    ip addr del "$3"/16 brd 169.254.255.255 label "${BRIDGE_ETHDEV}:avahi" scope link dev $BRIDGE_ETHDEV
+                    ifconfig "${BRIDGE_ETHDEV}:avahi" down
+                fi
             fi
             route del -net 169.254.0.0 netmask 255.255.0.0 dev ${2}
             ifconfig "$2:avahi" down
