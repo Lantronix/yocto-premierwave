@@ -24,6 +24,7 @@ update_dhcp_server_config() {
     echo "interface=$1" >> "$DHCP_SERVER_CONFIG_FILE"
     echo "except-interface=lo" >> "$DHCP_SERVER_CONFIG_FILE"
     echo "bind-interfaces" >> "$DHCP_SERVER_CONFIG_FILE"
+    echo "dhcp-leasefile=/ltrx_private/wl0.1.dnsmasq.leases" >> "$DHCP_SERVER_CONFIG_FILE"
     echo "dhcp-range=$2,$3,12h" >> "$DHCP_SERVER_CONFIG_FILE"
     #router
     echo "dhcp-option=option:router,$4" >> "$DHCP_SERVER_CONFIG_FILE"
@@ -157,9 +158,16 @@ if [ "$1" == "start" ]; then
     # Now set up the interface and DHCP server:
     /sbin/ifconfig wl0.1 $IP_ADDRESS netmask $NETMASK up
     update_dhcp_server_config wl0.1 $DHCP_START $DHCP_END $IP_ADDRESS
+    if [ -n "$MTU" ]; then
+        /sbin/ifconfig wl0.1 mtu $MTU
+        echo "dhcp-option=26,$MTU" >> "$DHCP_SERVER_CONFIG_FILE"
+    fi
     IPV6_AAAA_RECORD=""
     if [ "$DHCPV6" == "yes" ]; then
         ip addr add $IPV6_ADDRESS dev wl0.1
+        if [ -n "$MTU" ]; then
+            sysctl -w net.ipv6.conf.wl0.1.mtu=$MTU
+        fi
         echo "dhcp-range=$DHCP6_START,$DHCP6_END,slaac,64,24h" >> "$DHCP_SERVER_CONFIG_FILE"
         IPV6_ROUTER_IP=`echo $IPV6_ADDRESS | awk -F'/' '{print $1}'`
         echo "dhcp-option=option6:dns-server,[$IPV6_ROUTER_IP]" >> "$DHCP_SERVER_CONFIG_FILE"

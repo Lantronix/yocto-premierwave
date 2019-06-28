@@ -110,7 +110,7 @@ restart_l3_bridging()
         killall dhcrelay
         if [ "$DHCP_RELAY_MODE" = "yes" -a "$DHCP_SERVER_IP" != "" ]; then
             #Relay DHCP requests between clients and server
-            dhcrelay -d -a -D -id $INT_IF -iu $EXT_IF $DHCP_SERVER_IP&#for IPv4
+            dhcrelay -d -a -D -id $INT_IF -iu $EXT_IF -U $EXT_IF $DHCP_SERVER_IP&#for IPv4
         fi
         if [ "$DHCP6_RELAY_MODE" = "yes" ]; then
             #Relay DHCPv6 requests between clients and server
