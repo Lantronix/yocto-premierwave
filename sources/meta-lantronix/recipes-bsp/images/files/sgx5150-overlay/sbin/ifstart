@@ -323,15 +323,15 @@ if [ "$IPV6" = "yes" ] ; then
         WLAN_MAC5=`echo $WLAN_MAC | awk '{print $5}'`
         WLAN_MAC6=`echo $WLAN_MAC | awk '{print $6}'`
         #IPv6 stateless address autoconfiguration based on interface MAC (calculated)
-        ip token set ::$WLAN_MAC1$WLAN_MAC2:$WLAN_MAC3$WLAN_MAC4:$WLAN_MAC5$WLAN_MAC6 dev $IFCNAME
+        WLAN_MAC1=$(( $WLAN_MAC1 ^ 2 ))
+        LINKLOCAL_ADDRESS_MID="ff:fe"
+        ip token set ::$WLAN_MAC1$WLAN_MAC2:$WLAN_MAC3$LINKLOCAL_ADDRESS_MID$WLAN_MAC4:$WLAN_MAC5$WLAN_MAC6 dev $IFCNAME
         while true; do
             OLD_LINKLOCAL_ADDRESS=`ip -6 addr show dev $IFCNAME scope link | grep inet6 | head -n1 | awk '{print $2}'`
             if [ -n "$OLD_LINKLOCAL_ADDRESS" ] ; then
                 LINKLOCAL_MASK=`ip -6 addr show dev $IFCNAME scope link | grep inet6 | head -n1 | awk -F'/' '{print $2}' | awk '{print $1}'`
                 #replace the link local address
-                WLAN_MAC1=$(( $WLAN_MAC1 ^ 2 ))
                 LINKLOCAL_ADDRESS_PRE=$WLAN_MAC1$WLAN_MAC2:$WLAN_MAC3
-                LINKLOCAL_ADDRESS_MID="ff:fe"
                 LINKLOCAL_ADDRESS_POST=$WLAN_MAC4:$WLAN_MAC5$WLAN_MAC6/$LINKLOCAL_MASK
                 LINKLOCAL_ADDRESS=fe80::$LINKLOCAL_ADDRESS_PRE$LINKLOCAL_ADDRESS_MID$LINKLOCAL_ADDRESS_POST
                 ip -6 addr add $LINKLOCAL_ADDRESS dev $IFCNAME scope link
