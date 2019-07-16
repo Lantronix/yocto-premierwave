@@ -1,5 +1,5 @@
 DESCRIPTION = "Wide DHCPv6 is a program for supporting the DHCPv6 protocol."
-LICENSE = "MIT"
+LICENSE = "BSD"
 LIC_FILES_CHKSUM = "file://COPYRIGHT;md5=c180fcd362bda6abeae4ca1f7d7ac3fc"
 DEPENDS += "flex"
 
@@ -24,6 +24,7 @@ EXTRA_OECONF += " \
                  ac_cv_func_daemon=yes \
                  ac_cv_func_warnx=yes \
                  ac_cv_func_arc4random=no \
+                 --with-localdbdir=/ltrx_private/ \
                 "
 
 do_install() {
