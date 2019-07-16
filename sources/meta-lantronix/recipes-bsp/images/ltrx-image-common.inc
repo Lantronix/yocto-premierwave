@@ -62,6 +62,7 @@ IMAGE_INSTALL += "python-pyusb"
 IMAGE_INSTALL += "python-pyzmq"
 IMAGE_INSTALL += "python-requests"
 IMAGE_INSTALL += "python-minimalmodbus"
+IMAGE_INSTALL += "python-pymodbustcp"
 IMAGE_INSTALL += "python-configparser"
 IMAGE_INSTALL += "python-psutil"
 IMAGE_INSTALL += "python-werkzeug"
@@ -247,6 +248,7 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/setuptools/command/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/setuptools/tests/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/wsgiref/*.py
+    #cp ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/MinimalModbus-0.7-py2.7.egg/minimalmodbus.py* ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages// 
     rm -rf ${IMAGE_ROOTFS}/usr/bin/write
     rm -rf ${IMAGE_ROOTFS}/usr/bin/whereis
     rm -rf ${IMAGE_ROOTFS}/usr/bin/wdctl
