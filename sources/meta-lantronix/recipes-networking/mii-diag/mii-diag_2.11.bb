@@ -7,8 +7,8 @@ S = "${WORKDIR}/${BPN}-${PV}.orig"
 
 #PACKAGE_STRIP = "no"
 
-SRC_URI = "${DEBIAN_MIRROR}/main/m/${BPN}/${BPN}_${PV}.orig.tar.gz;name=tarball \
-           ${DEBIAN_MIRROR}/main/m/${BPN}/${BPN}_${PV}-3.diff.gz;name=patch \
+SRC_URI = "file://${BPN}_${PV}.orig.tar.gz;name=tarball \
+           file://${BPN}_${PV}-3.diff.gz;name=patch \
           "
 SRC_URI[tarball.md5sum] = "2c0cc0cd29c80f86921e6f300709bf81"
 SRC_URI[tarball.sha256sum] = "c690e87e6010607593c1cc2ccd5c481eb3be179387220ad445d8ab83d73ad41c"
