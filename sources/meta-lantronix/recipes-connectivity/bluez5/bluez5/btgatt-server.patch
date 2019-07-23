@@ -1,29 +1,4288 @@
-diff -ruN bluez_utils-5.43/Makefile.in bluez_utils-5.43_mod/Makefile.in
+diff -ruN --new-file bluez_utils-5.43/btio/btio.c bluez_utils-5.43_mod_2/btio/btio.c
+--- bluez_utils-5.43/btio/btio.c	2017-06-14 18:25:33.843679806 +0530
++++ bluez_utils-5.43_mod_2/btio/btio.c	2019-05-08 17:26:24.092147903 +0530
+@@ -40,7 +40,7 @@
+ #include "lib/l2cap.h"
+ #include "lib/rfcomm.h"
+ #include "lib/sco.h"
+-
++#include "src/log.h"
+ #include "btio.h"
+ 
+ #ifndef BT_FLUSHABLE
+@@ -138,6 +138,7 @@
+ 	default:
+ 		g_set_error(gerr, BT_IO_ERROR, EINVAL,
+ 					"Unknown BtIO socket type");
++		DBG_ERR("BT: BT_IO_ERROR");
+ 		return BT_IO_INVALID;
+ 	}
+ }
+@@ -1431,6 +1432,7 @@
+ 	default:
+ 		g_set_error(err, BT_IO_ERROR, EINVAL,
+ 				"Unknown BtIO type %d", type);
++		DBG_ERR("BT: ERR %s: BT_IO_INVALID",__func__);
+ 		return FALSE;
+ 	}
+ }
+@@ -1511,13 +1513,14 @@
+ 	BtIOType type;
+ 
+ 	type = bt_io_get_type(io, err);
++	DBG_ERR("BT: type = %d",type);
+ 	if (type == BT_IO_INVALID)
+ 		return FALSE;
+ 
+ 	va_start(args, opt1);
+ 	ret = get_valist(io, type, err, opt1, args);
+ 	va_end(args);
+-
++	DBG_ERR("BT: bt_io_get ret = %x",ret);
+ 	return ret;
+ }
+ 
+diff -ruN --new-file bluez_utils-5.43/client/ltrx_beacon_scanner.c bluez_utils-5.43_mod_2/client/ltrx_beacon_scanner.c
+--- bluez_utils-5.43/client/ltrx_beacon_scanner.c	1970-01-01 05:30:00.000000000 +0530
++++ bluez_utils-5.43_mod_2/client/ltrx_beacon_scanner.c	2019-07-02 12:19:19.634525036 +0530
+@@ -0,0 +1,2702 @@
++/*
++ *
++ *  BlueZ - Bluetooth protocol stack for Linux
++ *
++ *  Copyright (C) 2012  Intel Corporation. All rights reserved.
++ *
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2 of the License, or
++ *  (at your option) any later version.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
++ *
++ */
++
++#ifdef HAVE_CONFIG_H
++#include <config.h>
++#endif
++
++#include <stdio.h>
++#include <errno.h>
++#include <unistd.h>
++#include <stdlib.h>
++#include <stdbool.h>
++#include <signal.h>
++#include <sys/signalfd.h>
++#include <wordexp.h>
++
++#include <readline/readline.h>
++#include <readline/history.h>
++#include <glib.h>
++
++#include "src/shared/util.h"
++#include "gdbus/gdbus.h"
++#include "monitor/uuid.h"
++#include "agent.h"
++#include "display.h"
++#include "gatt.h"
++#include "advertising.h"
++
++/* String display constants */
++#define COLORED_NEW	COLOR_GREEN "NEW" COLOR_OFF
++#define COLORED_CHG	COLOR_YELLOW "CHG" COLOR_OFF
++#define COLORED_DEL	COLOR_RED "DEL" COLOR_OFF
++
++#define PROMPT_ON	COLOR_BLUE "[bluetooth]" COLOR_OFF "# "
++#define PROMPT_OFF	"Waiting to connect to bluetoothd..."
++
++static GMainLoop *main_loop;
++static DBusConnection *dbus_conn;
++
++static GDBusProxy *agent_manager;
++static char *auto_register_agent = NULL;
++
++struct adapter {
++	GDBusProxy *proxy;
++	GList *devices;
++};
++
++static struct adapter *default_ctrl;
++static GDBusProxy *default_dev;
++static GDBusProxy *default_attr;
++static GDBusProxy *ad_manager;
++static GList *ctrl_list;
++
++static guint input = 0;
++static void cmd_info(const char *arg);
++uint16_t manufacture_key = 0;
++uint8_t manu_or_service_data[30] = {0};
++uint8_t manu_or_service_data_index;
++static uint8_t multi_byte_value_flag = 0;
++static uint8_t manufacture_first_value_flag = 0;
++uint8_t manufature_first_value_byte = 0;
++bool is_EddystoneBeacon = false;
++static const char * const agent_arguments[] = {
++	"on",
++	"off",
++	"DisplayOnly",
++	"DisplayYesNo",
++	"KeyboardDisplay",
++	"KeyboardOnly",
++	"NoInputNoOutput",
++	NULL
++};
++
++static const char * const ad_arguments[] = {
++	"on",
++	"off",
++	"peripheral",
++	"broadcast",
++	NULL
++};
++
++static void proxy_leak(gpointer data)
++{
++	printf("Leaking proxy %p\n", data);
++}
++
++static gboolean input_handler(GIOChannel *channel, GIOCondition condition,
++							gpointer user_data)
++{
++	if (condition & G_IO_IN) {
++		rl_callback_read_char();
++		return TRUE;
++	}
++
++	if (condition & (G_IO_HUP | G_IO_ERR | G_IO_NVAL)) {
++		g_main_loop_quit(main_loop);
++		return FALSE;
++	}
++
++	return TRUE;
++}
++
++static guint setup_standard_input(void)
++{
++	GIOChannel *channel;
++	guint source;
++
++	channel = g_io_channel_unix_new(fileno(stdin));
++
++	source = g_io_add_watch(channel,
++				G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
++				input_handler, NULL);
++
++	g_io_channel_unref(channel);
++
++	return source;
++}
++
++static void connect_handler(DBusConnection *connection, void *user_data)
++{
++	rl_set_prompt(PROMPT_ON);
++	printf("\r");
++	rl_on_new_line();
++	rl_redisplay();
++}
++
++static void disconnect_handler(DBusConnection *connection, void *user_data)
++{
++	if (input > 0) {
++		g_source_remove(input);
++		input = 0;
++	}
++
++	rl_set_prompt(PROMPT_OFF);
++	printf("\r");
++	rl_on_new_line();
++	rl_redisplay();
++
++	g_list_free_full(ctrl_list, proxy_leak);
++	ctrl_list = NULL;
++
++	default_ctrl = NULL;
++}
++
++static void print_adapter(GDBusProxy *proxy, const char *description)
++{
++	DBusMessageIter iter;
++	const char *address, *name;
++
++	if (g_dbus_proxy_get_property(proxy, "Address", &iter) == FALSE)
++		return;
++
++	dbus_message_iter_get_basic(&iter, &address);
++
++	if (g_dbus_proxy_get_property(proxy, "Alias", &iter) == TRUE)
++		dbus_message_iter_get_basic(&iter, &name);
++	else
++		name = "<unknown>";
++
++	rl_printf("%s%s%sController %s %s %s\n",
++				description ? "[" : "",
++				description ? : "",
++				description ? "] " : "",
++				address, name,
++				default_ctrl &&
++				default_ctrl->proxy == proxy ?
++				"[default]" : "");
++
++}
++
++static void print_device(GDBusProxy *proxy, const char *description)
++{
++	DBusMessageIter iter;
++	const char *address, *name;
++
++	if (g_dbus_proxy_get_property(proxy, "Address", &iter) == FALSE)
++		return;
++
++	dbus_message_iter_get_basic(&iter, &address);
++
++	if (g_dbus_proxy_get_property(proxy, "Alias", &iter) == TRUE)
++		dbus_message_iter_get_basic(&iter, &name);
++	else
++		name = "<unknown>";
++
++	rl_printf("%s%s%sDevice %s %s\n",
++				description ? "[" : "",
++				description ? : "",
++				description ? "] " : "",
++				address, name);
++}
++static void get_key_iter(const char *label, const char *name,
++                                                DBusMessageIter *iter)
++{
++        dbus_bool_t valbool;
++        dbus_uint32_t valu32;
++        dbus_uint16_t valu16;
++        dbus_int16_t vals16;
++        unsigned char byte;
++        const char *valstr;
++        DBusMessageIter subiter;
++        char *entry;
++
++        if (iter == NULL) {
++                rl_printf("%s%s is nil\n", label, name);
++                return;
++        }
++
++        switch (dbus_message_iter_get_arg_type(iter)) {
++        case DBUS_TYPE_INVALID:
++                rl_printf("%s%s is invalid\n", label, name);
++                break;
++        case DBUS_TYPE_STRING:
++        case DBUS_TYPE_OBJECT_PATH:
++                dbus_message_iter_get_basic(iter, &valstr);
++                //rl_printf("%s%s: %s\n", label, name, valstr);
++                break;
++        case DBUS_TYPE_BOOLEAN:
++                dbus_message_iter_get_basic(iter, &valbool);
++                /*rl_printf("%s%s: %s\n", label, name,
++                                        valbool == TRUE ? "yes" : "no");*/
++                break;
++        case DBUS_TYPE_UINT32:
++                dbus_message_iter_get_basic(iter, &valu32);
++                //rl_printf("%s%s: 0x%06x\n", label, name, valu32);
++                break;
++        case DBUS_TYPE_UINT16:
++                dbus_message_iter_get_basic(iter, &valu16);
++                manufacture_key = (uint16_t)valu16; 
++                //rl_printf("%s%s: 0x%04x\n", label, name, valu16);
++                break;
++        case DBUS_TYPE_INT16:
++                dbus_message_iter_get_basic(iter, &vals16);
++                //rl_printf("%s%s: %d\n", label, name, vals16);
++                break;
++        case DBUS_TYPE_BYTE:
++                dbus_message_iter_get_basic(iter, &byte);
++                if(manufacture_first_value_flag)
++                {
++                    manufature_first_value_byte = byte;
++                    //rl_printf("manufature_first_value_byte : 0x%02x\n", manufature_first_value_byte ); 
++                    manufacture_first_value_flag = 0;
++                }
++                //rl_printf("%s%s: 0x%02x\n", label, name, byte);
++                break;
++        case DBUS_TYPE_VARIANT:
++                dbus_message_iter_recurse(iter, &subiter);
++                get_key_iter(label, name, &subiter);
++                break;
++        case DBUS_TYPE_ARRAY:
++                dbus_message_iter_recurse(iter, &subiter);
++                while (dbus_message_iter_get_arg_type(&subiter) !=
++                                                        DBUS_TYPE_INVALID) {
++                        get_key_iter(label, name, &subiter);
++                        dbus_message_iter_next(&subiter);
++                }
++                break;
++        case DBUS_TYPE_DICT_ENTRY:
++                dbus_message_iter_recurse(iter, &subiter);
++                entry = g_strconcat(name, " Key", NULL);
++                get_key_iter(label, entry, &subiter);
++                g_free(entry);
++                
++                entry = g_strconcat(name, " Value", NULL);
++                dbus_message_iter_next(&subiter);
++                manufacture_first_value_flag = 1;
++                get_key_iter(label, entry, &subiter);
++                g_free(entry);
++                break;
++        default:
++                rl_printf("%s%s has unsupported type\n", label, name);
++                break;
++        }
++}
++
++
++static void print_iter(const char *label, const char *name,
++						DBusMessageIter *iter)
++{
++	dbus_bool_t valbool;
++	dbus_uint32_t valu32;
++	dbus_uint16_t valu16;
++	dbus_int16_t vals16;
++	unsigned char byte;
++	const char *valstr;
++	DBusMessageIter subiter;
++	char *entry;
++
++	if (iter == NULL) {
++		rl_printf("%s%s is nil\n", label, name);
++		return;
++	}
++
++	switch (dbus_message_iter_get_arg_type(iter)) {
++	case DBUS_TYPE_INVALID:
++		rl_printf("%s%s is invalid\n", label, name);
++		break;
++	case DBUS_TYPE_STRING:
++	case DBUS_TYPE_OBJECT_PATH:
++		dbus_message_iter_get_basic(iter, &valstr);
++		rl_printf("%s%s: %s\n", label, name, valstr);
++		break;
++	case DBUS_TYPE_BOOLEAN:
++		dbus_message_iter_get_basic(iter, &valbool);
++		rl_printf("%s%s: %s\n", label, name,
++					valbool == TRUE ? "yes" : "no");
++		break;
++	case DBUS_TYPE_UINT32:
++		dbus_message_iter_get_basic(iter, &valu32);
++		rl_printf("%s%s: 0x%06x\n", label, name, valu32);
++		break;
++	case DBUS_TYPE_UINT16:
++		dbus_message_iter_get_basic(iter, &valu16);
++		rl_printf("%s%s: 0x%04x\n", label, name, valu16);
++		break;
++	case DBUS_TYPE_INT16:
++		dbus_message_iter_get_basic(iter, &vals16);
++		rl_printf("%s%s: %d\n", label, name, vals16);
++		break;
++	case DBUS_TYPE_BYTE:
++		dbus_message_iter_get_basic(iter, &byte);
++		rl_printf("%s%s: 0x%02x\n", label, name, byte);
++                if(multi_byte_value_flag)
++                {
++                     manu_or_service_data[manu_or_service_data_index++] = byte;
++                }
++		break;
++	case DBUS_TYPE_VARIANT:
++		dbus_message_iter_recurse(iter, &subiter);
++		print_iter(label, name, &subiter);
++		break;
++	case DBUS_TYPE_ARRAY:
++		dbus_message_iter_recurse(iter, &subiter);
++		while (dbus_message_iter_get_arg_type(&subiter) !=
++							DBUS_TYPE_INVALID) {
++			print_iter(label, name, &subiter);
++			dbus_message_iter_next(&subiter);
++		}
++		break;
++	case DBUS_TYPE_DICT_ENTRY:
++		dbus_message_iter_recurse(iter, &subiter);
++		entry = g_strconcat(name, " Key", NULL);
++		print_iter(label, entry, &subiter);
++		g_free(entry);
++
++		entry = g_strconcat(name, " Value", NULL);
++		dbus_message_iter_next(&subiter);
++		print_iter(label, entry, &subiter);
++		g_free(entry);
++		break;
++	default:
++		rl_printf("%s%s has unsupported type\n", label, name);
++		break;
++	}
++}
++static void get_key_property(GDBusProxy *proxy)
++{
++        DBusMessageIter iter;
++
++        if (g_dbus_proxy_get_property(proxy, "ManufacturerData", &iter) == FALSE)
++                return;
++
++        get_key_iter("\t", "ManufacturerData", &iter);
++}
++
++static void print_property(GDBusProxy *proxy, const char *name)
++{
++	DBusMessageIter iter;
++
++	if (g_dbus_proxy_get_property(proxy, name, &iter) == FALSE)
++		return;
++
++	print_iter("\t", name, &iter);
++}
++static char *get_uuids(GDBusProxy *proxy)
++{
++        DBusMessageIter iter, value;
++
++        if (g_dbus_proxy_get_property(proxy, "UUIDs", &iter) == FALSE)
++                return;
++
++        dbus_message_iter_recurse(&iter, &value);
++        char match_uuid [40]; 
++        match_uuid[0] = '\0';
++        while (dbus_message_iter_get_arg_type(&value) == DBUS_TYPE_STRING) {
++                const char *uuid, *text;
++
++                dbus_message_iter_get_basic(&value, &uuid);
++
++                text = uuidstr_to_str(uuid);
++                if (text) {
++                        char str[26];
++                        unsigned int n;
++
++                        str[sizeof(str) - 1] = '\0';
++
++                        n = snprintf(str, sizeof(str), "%s", text);
++                        if (n > sizeof(str) - 1) {
++                                str[sizeof(str) - 2] = '.';
++                                str[sizeof(str) - 3] = '.';
++                                if (str[sizeof(str) - 4] == ' ')
++                                        str[sizeof(str) - 4] = '.';
++
++                                n = sizeof(str) - 1;
++                        }
++
++                        /*rl_printf("\tUUID: %s%*c(%s)\n",
++                                                str, 26 - n, ' ', uuid);*/
++                } /*else
++                        rl_printf("\tUUID: %*c(%s)\n", 26, ' ', uuid);*/
++                if(!memcmp(uuid, "0000feaa-0000-1000-8000-00805f9b34fb", 36))
++                {     
++                     memcpy(match_uuid, uuid, 36);
++                     match_uuid[36] = '\0';
++                }
++                dbus_message_iter_next(&value); 
++        }
++        return &match_uuid;
++}
++static void print_uuids(GDBusProxy *proxy)
++{
++	DBusMessageIter iter, value;
++
++	if (g_dbus_proxy_get_property(proxy, "UUIDs", &iter) == FALSE)
++		return;
++
++	dbus_message_iter_recurse(&iter, &value);
++
++	while (dbus_message_iter_get_arg_type(&value) == DBUS_TYPE_STRING) {
++		const char *uuid, *text;
++
++		dbus_message_iter_get_basic(&value, &uuid);
++
++		text = uuidstr_to_str(uuid);
++		if (text) {
++			char str[26];
++			unsigned int n;
++
++			str[sizeof(str) - 1] = '\0';
++
++			n = snprintf(str, sizeof(str), "%s", text);
++			if (n > sizeof(str) - 1) {
++				str[sizeof(str) - 2] = '.';
++				str[sizeof(str) - 3] = '.';
++				if (str[sizeof(str) - 4] == ' ')
++					str[sizeof(str) - 4] = '.';
++
++				n = sizeof(str) - 1;
++			}
++
++			rl_printf("\tUUID: %s%*c(%s)\n",
++						str, 26 - n, ' ', uuid);
++		} else
++			rl_printf("\tUUID: %*c(%s)\n", 26, ' ', uuid);
++                if(!memcmp(uuid, "0000feaa-0000-1000-8000-00805f9b34fb", 36))
++                    is_EddystoneBeacon = true; 
++
++		dbus_message_iter_next(&value);
++	}
++}
++
++static gboolean device_is_child(GDBusProxy *device, GDBusProxy *master)
++{
++	DBusMessageIter iter;
++	const char *adapter, *path;
++
++	if (!master)
++		return FALSE;
++
++	if (g_dbus_proxy_get_property(device, "Adapter", &iter) == FALSE)
++		return FALSE;
++
++	dbus_message_iter_get_basic(&iter, &adapter);
++	path = g_dbus_proxy_get_path(master);
++
++	if (!strcmp(path, adapter))
++		return TRUE;
++
++	return FALSE;
++}
++
++static gboolean service_is_child(GDBusProxy *service)
++{
++	GList *l;
++	DBusMessageIter iter;
++	const char *device, *path;
++
++	if (g_dbus_proxy_get_property(service, "Device", &iter) == FALSE)
++		return FALSE;
++
++	dbus_message_iter_get_basic(&iter, &device);
++
++	if (!default_ctrl)
++		return FALSE;
++
++	for (l = default_ctrl->devices; l; l = g_list_next(l)) {
++		struct GDBusProxy *proxy = l->data;
++
++		path = g_dbus_proxy_get_path(proxy);
++
++		if (!strcmp(path, device))
++			return TRUE;
++	}
++
++	return FALSE;
++}
++
++static struct adapter *find_parent(GDBusProxy *device)
++{
++	GList *list;
++
++	for (list = g_list_first(ctrl_list); list; list = g_list_next(list)) {
++		struct adapter *adapter = list->data;
++
++		if (device_is_child(device, adapter->proxy) == TRUE)
++			return adapter;
++	}
++	return NULL;
++}
++
++static void set_default_device(GDBusProxy *proxy, const char *attribute)
++{
++	char *desc = NULL;
++	DBusMessageIter iter;
++	const char *path;
++
++	default_dev = proxy;
++
++	if (proxy == NULL) {
++		default_attr = NULL;
++		goto done;
++	}
++
++	if (!g_dbus_proxy_get_property(proxy, "Alias", &iter)) {
++		if (!g_dbus_proxy_get_property(proxy, "Address", &iter))
++			goto done;
++	}
++
++	path = g_dbus_proxy_get_path(proxy);
++
++	dbus_message_iter_get_basic(&iter, &desc);
++	desc = g_strdup_printf(COLOR_BLUE "[%s%s%s]" COLOR_OFF "# ", desc,
++				attribute ? ":" : "",
++				attribute ? attribute + strlen(path) : "");
++
++done:
++	rl_set_prompt(desc ? desc : PROMPT_ON);
++	printf("\r");
++	rl_on_new_line();
++	g_free(desc);
++}
++
++static void device_added(GDBusProxy *proxy)
++{
++	DBusMessageIter iter;
++	struct adapter *adapter = find_parent(proxy);
++
++	if (!adapter) {
++		/* TODO: Error */
++		return;
++	}
++
++        get_key_property(proxy);
++        if(!memcmp(get_uuids(proxy), "0000feaa-0000-1000-8000-00805f9b34fb", 36) || (manufacture_key == 0x4c && manufature_first_value_byte == 0x02))
++	{
++          
++            adapter->devices = g_list_append(adapter->devices, proxy);
++            const char *address;
++            DBusMessageIter addr_iter;
++            if (g_dbus_proxy_get_property(proxy, "Address",
++                 &addr_iter) == TRUE) {
++
++                                dbus_message_iter_get_basic(&addr_iter,
++                                                                &address);
++            }
++               
++            print_device(proxy, COLORED_NEW);
++            cmd_info(address);
++            manufacture_key = 0;
++            manufature_first_value_byte = 0x00;
++        }
++        else
++        {
++            manufacture_key = 0;
++            manufature_first_value_byte = 0x00;
++        }
++	if (default_dev)
++		return;
++
++	if (g_dbus_proxy_get_property(proxy, "Connected", &iter)) {
++		dbus_bool_t connected;
++
++		dbus_message_iter_get_basic(&iter, &connected);
++
++		if (connected)
++			set_default_device(proxy, NULL);
++	}
++}
++
++static void adapter_added(GDBusProxy *proxy)
++{
++	struct adapter *adapter = g_malloc0(sizeof(struct adapter));
++
++	adapter->proxy = proxy;
++	ctrl_list = g_list_append(ctrl_list, adapter);
++
++	if (!default_ctrl)
++		default_ctrl = adapter;
++
++	print_adapter(proxy, COLORED_NEW);
++}
++
++static void proxy_added(GDBusProxy *proxy, void *user_data)
++{
++	const char *interface;
++
++	interface = g_dbus_proxy_get_interface(proxy);
++
++	if (!strcmp(interface, "org.bluez.Device1")) {
++		device_added(proxy);
++	} else if (!strcmp(interface, "org.bluez.Adapter1")) {
++		adapter_added(proxy);
++	} else if (!strcmp(interface, "org.bluez.AgentManager1")) {
++		if (!agent_manager) {
++			agent_manager = proxy;
++
++			if (auto_register_agent)
++				agent_register(dbus_conn, agent_manager,
++							auto_register_agent);
++		}
++	} else if (!strcmp(interface, "org.bluez.GattService1")) {
++		if (service_is_child(proxy))
++			gatt_add_service(proxy);
++	} else if (!strcmp(interface, "org.bluez.GattCharacteristic1")) {
++		gatt_add_characteristic(proxy);
++	} else if (!strcmp(interface, "org.bluez.GattDescriptor1")) {
++		gatt_add_descriptor(proxy);
++	} else if (!strcmp(interface, "org.bluez.GattManager1")) {
++		gatt_add_manager(proxy);
++	} else if (!strcmp(interface, "org.bluez.LEAdvertisingManager1")) {
++		ad_manager = proxy;
++	}
++}
++
++static void set_default_attribute(GDBusProxy *proxy)
++{
++	const char *path;
++
++	default_attr = proxy;
++
++	path = g_dbus_proxy_get_path(proxy);
++
++	set_default_device(default_dev, path);
++}
++
++static void device_removed(GDBusProxy *proxy)
++{
++	struct adapter *adapter = find_parent(proxy);
++	if (!adapter) {
++		/* TODO: Error */
++		return;
++	}
++
++	adapter->devices = g_list_remove(adapter->devices, proxy);
++
++	print_device(proxy, COLORED_DEL);
++
++	if (default_dev == proxy)
++		set_default_device(NULL, NULL);
++}
++
++static void adapter_removed(GDBusProxy *proxy)
++{
++	GList *ll;
++
++	for (ll = g_list_first(ctrl_list); ll; ll = g_list_next(ll)) {
++		struct adapter *adapter = ll->data;
++
++		if (adapter->proxy == proxy) {
++			print_adapter(proxy, COLORED_DEL);
++
++			if (default_ctrl && default_ctrl->proxy == proxy) {
++				default_ctrl = NULL;
++				set_default_device(NULL, NULL);
++			}
++
++			ctrl_list = g_list_remove_link(ctrl_list, ll);
++			g_list_free(adapter->devices);
++			g_free(adapter);
++			g_list_free(ll);
++			return;
++		}
++	}
++}
++
++static void proxy_removed(GDBusProxy *proxy, void *user_data)
++{
++	const char *interface;
++
++	interface = g_dbus_proxy_get_interface(proxy);
++
++	if (!strcmp(interface, "org.bluez.Device1")) {
++		device_removed(proxy);
++	} else if (!strcmp(interface, "org.bluez.Adapter1")) {
++		adapter_removed(proxy);
++	} else if (!strcmp(interface, "org.bluez.AgentManager1")) {
++		if (agent_manager == proxy) {
++			agent_manager = NULL;
++			if (auto_register_agent)
++				agent_unregister(dbus_conn, NULL);
++		}
++	} else if (!strcmp(interface, "org.bluez.GattService1")) {
++		gatt_remove_service(proxy);
++
++		if (default_attr == proxy)
++			set_default_attribute(NULL);
++	} else if (!strcmp(interface, "org.bluez.GattCharacteristic1")) {
++		gatt_remove_characteristic(proxy);
++
++		if (default_attr == proxy)
++			set_default_attribute(NULL);
++	} else if (!strcmp(interface, "org.bluez.GattDescriptor1")) {
++		gatt_remove_descriptor(proxy);
++
++		if (default_attr == proxy)
++			set_default_attribute(NULL);
++	} else if (!strcmp(interface, "org.bluez.GattManager1")) {
++		gatt_remove_manager(proxy);
++	} else if (!strcmp(interface, "org.bluez.LEAdvertisingManager1")) {
++		if (ad_manager == proxy) {
++			agent_manager = NULL;
++			ad_unregister(dbus_conn, NULL);
++		}
++	}
++}
++
++static void property_changed(GDBusProxy *proxy, const char *name,
++					DBusMessageIter *iter, void *user_data)
++{
++	const char *interface;
++
++	interface = g_dbus_proxy_get_interface(proxy);
++
++	if (!strcmp(interface, "org.bluez.Device1")) {
++		if (default_ctrl && device_is_child(proxy,
++					default_ctrl->proxy) == TRUE) {
++			DBusMessageIter addr_iter;
++			char *str;
++
++			if (g_dbus_proxy_get_property(proxy, "Address",
++							&addr_iter) == TRUE) {
++				const char *address;
++
++				dbus_message_iter_get_basic(&addr_iter,
++								&address);
++             
++                                get_key_property(proxy);
++                                if(!memcmp(get_uuids(proxy), "0000feaa-0000-1000-8000-00805f9b34fb", 36) || 
++                                    (manufacture_key == 0x4c && manufature_first_value_byte == 0x02))
++                                {
++				     str = g_strdup_printf("[" COLORED_CHG
++						"] Device %s ", address);
++                                     manufacture_key = 0;
++                                     manufature_first_value_byte = 0x00;
++                                }
++                                else 
++                                {
++                                     manufature_first_value_byte = 0x00;
++                                     manufacture_key = 0;
++                                     return;
++                                }
++			} else
++				str = g_strdup("");
++
++			if (strcmp(name, "Connected") == 0) {
++				dbus_bool_t connected;
++
++				dbus_message_iter_get_basic(iter, &connected);
++
++				if (connected && default_dev == NULL)
++					set_default_device(proxy, NULL);
++				else if (!connected && default_dev == proxy)
++					set_default_device(NULL, NULL);
++			}
++
++			print_iter(str, name, iter);
++			g_free(str);
++		}
++	} else if (!strcmp(interface, "org.bluez.Adapter1")) {
++		DBusMessageIter addr_iter;
++		char *str;
++
++		if (g_dbus_proxy_get_property(proxy, "Address",
++						&addr_iter) == TRUE) {
++			const char *address;
++
++			dbus_message_iter_get_basic(&addr_iter, &address);
++			str = g_strdup_printf("[" COLORED_CHG
++						"] Controller %s ", address);
++		} else
++			str = g_strdup("");
++
++		print_iter(str, name, iter);
++		g_free(str);
++	} else if (proxy == default_attr) {
++		char *str;
++
++		str = g_strdup_printf("[" COLORED_CHG "] Attribute %s ",
++						g_dbus_proxy_get_path(proxy));
++
++		print_iter(str, name, iter);
++		g_free(str);
++	}
++}
++
++static void message_handler(DBusConnection *connection,
++					DBusMessage *message, void *user_data)
++{
++	rl_printf("[SIGNAL] %s.%s\n", dbus_message_get_interface(message),
++					dbus_message_get_member(message));
++}
++
++static struct adapter *find_ctrl_by_address(GList *source, const char *address)
++{
++	GList *list;
++
++	for (list = g_list_first(source); list; list = g_list_next(list)) {
++		struct adapter *adapter = list->data;
++		DBusMessageIter iter;
++		const char *str;
++
++		if (g_dbus_proxy_get_property(adapter->proxy,
++					"Address", &iter) == FALSE)
++			continue;
++
++		dbus_message_iter_get_basic(&iter, &str);
++
++		if (!strcmp(str, address))
++			return adapter;
++	}
++
++	return NULL;
++}
++
++static GDBusProxy *find_proxy_by_address(GList *source, const char *address)
++{
++	GList *list;
++
++	for (list = g_list_first(source); list; list = g_list_next(list)) {
++		GDBusProxy *proxy = list->data;
++		DBusMessageIter iter;
++		const char *str;
++
++		if (g_dbus_proxy_get_property(proxy, "Address", &iter) == FALSE)
++			continue;
++
++		dbus_message_iter_get_basic(&iter, &str);
++
++		if (!strcmp(str, address))
++			return proxy;
++	}
++
++	return NULL;
++}
++
++static gboolean check_default_ctrl(void)
++{
++	if (!default_ctrl) {
++		rl_printf("No default controller available\n");
++		return FALSE;
++	}
++
++	return TRUE;
++}
++
++static gboolean parse_argument_on_off(const char *arg, dbus_bool_t *value)
++{
++	if (!arg || !strlen(arg)) {
++		rl_printf("Missing on/off argument\n");
++		return FALSE;
++	}
++
++	if (!strcmp(arg, "on") || !strcmp(arg, "yes")) {
++		*value = TRUE;
++		return TRUE;
++	}
++
++	if (!strcmp(arg, "off") || !strcmp(arg, "no")) {
++		*value = FALSE;
++		return TRUE;
++	}
++
++	rl_printf("Invalid argument %s\n", arg);
++	return FALSE;
++}
++
++static gboolean parse_argument_agent(const char *arg, dbus_bool_t *value,
++							const char **capability)
++{
++	const char * const *opt;
++
++	if (arg == NULL || strlen(arg) == 0) {
++		rl_printf("Missing on/off/capability argument\n");
++		return FALSE;
++	}
++
++	if (strcmp(arg, "on") == 0 || strcmp(arg, "yes") == 0) {
++		*value = TRUE;
++		*capability = "";
++		return TRUE;
++	}
++
++	if (strcmp(arg, "off") == 0 || strcmp(arg, "no") == 0) {
++		*value = FALSE;
++		return TRUE;
++	}
++
++	for (opt = agent_arguments; *opt; opt++) {
++		if (strcmp(arg, *opt) == 0) {
++			*value = TRUE;
++			*capability = *opt;
++			return TRUE;
++		}
++	}
++
++	rl_printf("Invalid argument %s\n", arg);
++	return FALSE;
++}
++
++static void cmd_list(const char *arg)
++{
++	GList *list;
++
++	for (list = g_list_first(ctrl_list); list; list = g_list_next(list)) {
++		struct adapter *adapter = list->data;
++		print_adapter(adapter->proxy, NULL);
++	}
++}
++
++static void cmd_show(const char *arg)
++{
++	struct adapter *adapter;
++	GDBusProxy *proxy;
++	DBusMessageIter iter;
++	const char *address;
++
++	if (!arg || !strlen(arg)) {
++		if (check_default_ctrl() == FALSE)
++			return;
++
++		proxy = default_ctrl->proxy;
++	} else {
++		adapter = find_ctrl_by_address(ctrl_list, arg);
++		if (!adapter) {
++			rl_printf("Controller %s not available\n", arg);
++			return;
++		}
++		proxy = adapter->proxy;
++	}
++
++	if (g_dbus_proxy_get_property(proxy, "Address", &iter) == FALSE)
++		return;
++
++	dbus_message_iter_get_basic(&iter, &address);
++	rl_printf("Controller %s\n", address);
++
++	print_property(proxy, "Name");
++	print_property(proxy, "Alias");
++	print_property(proxy, "Class");
++	print_property(proxy, "Powered");
++	print_property(proxy, "Discoverable");
++	print_property(proxy, "Pairable");
++	print_uuids(proxy);
++	print_property(proxy, "Modalias");
++	print_property(proxy, "Discovering");
++}
++
++static void cmd_select(const char *arg)
++{
++	struct adapter *adapter;
++
++	if (!arg || !strlen(arg)) {
++		rl_printf("Missing controller address argument\n");
++		return;
++	}
++
++	adapter = find_ctrl_by_address(ctrl_list, arg);
++	if (!adapter) {
++		rl_printf("Controller %s not available\n", arg);
++		return;
++	}
++
++	if (default_ctrl && default_ctrl->proxy == adapter->proxy)
++		return;
++
++	default_ctrl = adapter;
++	print_adapter(adapter->proxy, NULL);
++}
++
++static void cmd_devices(const char *arg)
++{
++	GList *ll;
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	for (ll = g_list_first(default_ctrl->devices);
++			ll; ll = g_list_next(ll)) {
++		GDBusProxy *proxy = ll->data;
++		print_device(proxy, NULL);
++	}
++}
++
++static void cmd_paired_devices(const char *arg)
++{
++	GList *ll;
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	for (ll = g_list_first(default_ctrl->devices);
++			ll; ll = g_list_next(ll)) {
++		GDBusProxy *proxy = ll->data;
++		DBusMessageIter iter;
++		dbus_bool_t paired;
++
++		if (g_dbus_proxy_get_property(proxy, "Paired", &iter) == FALSE)
++			continue;
++
++		dbus_message_iter_get_basic(&iter, &paired);
++		if (!paired)
++			continue;
++
++		print_device(proxy, NULL);
++	}
++}
++
++static void generic_callback(const DBusError *error, void *user_data)
++{
++	char *str = user_data;
++
++	if (dbus_error_is_set(error))
++		rl_printf("Failed to set %s: %s\n", str, error->name);
++	else
++		rl_printf("Changing %s succeeded\n", str);
++}
++
++static void cmd_system_alias(const char *arg)
++{
++	char *name;
++
++	if (!arg || !strlen(arg)) {
++		rl_printf("Missing name argument\n");
++		return;
++	}
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	name = g_strdup(arg);
++
++	if (g_dbus_proxy_set_property_basic(default_ctrl->proxy, "Alias",
++					DBUS_TYPE_STRING, &name,
++					generic_callback, name, g_free) == TRUE)
++		return;
++
++	g_free(name);
++}
++
++static void cmd_reset_alias(const char *arg)
++{
++	char *name;
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	name = g_strdup("");
++
++	if (g_dbus_proxy_set_property_basic(default_ctrl->proxy, "Alias",
++					DBUS_TYPE_STRING, &name,
++					generic_callback, name, g_free) == TRUE)
++		return;
++
++	g_free(name);
++}
++
++static void cmd_power(const char *arg)
++{
++	dbus_bool_t powered;
++	char *str;
++
++	if (parse_argument_on_off(arg, &powered) == FALSE)
++		return;
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	str = g_strdup_printf("power %s", powered == TRUE ? "on" : "off");
++
++	if (g_dbus_proxy_set_property_basic(default_ctrl->proxy, "Powered",
++					DBUS_TYPE_BOOLEAN, &powered,
++					generic_callback, str, g_free) == TRUE)
++		return;
++
++	g_free(str);
++}
++
++static void cmd_pairable(const char *arg)
++{
++	dbus_bool_t pairable;
++	char *str;
++
++	if (parse_argument_on_off(arg, &pairable) == FALSE)
++		return;
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	str = g_strdup_printf("pairable %s", pairable == TRUE ? "on" : "off");
++
++	if (g_dbus_proxy_set_property_basic(default_ctrl->proxy, "Pairable",
++					DBUS_TYPE_BOOLEAN, &pairable,
++					generic_callback, str, g_free) == TRUE)
++		return;
++
++	g_free(str);
++}
++
++static void cmd_discoverable(const char *arg)
++{
++	dbus_bool_t discoverable;
++	char *str;
++
++	if (parse_argument_on_off(arg, &discoverable) == FALSE)
++		return;
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	str = g_strdup_printf("discoverable %s",
++				discoverable == TRUE ? "on" : "off");
++
++	if (g_dbus_proxy_set_property_basic(default_ctrl->proxy, "Discoverable",
++					DBUS_TYPE_BOOLEAN, &discoverable,
++					generic_callback, str, g_free) == TRUE)
++		return;
++
++	g_free(str);
++}
++
++static void cmd_agent(const char *arg)
++{
++	dbus_bool_t enable;
++	const char *capability;
++
++	if (parse_argument_agent(arg, &enable, &capability) == FALSE)
++		return;
++
++	if (enable == TRUE) {
++		g_free(auto_register_agent);
++		auto_register_agent = g_strdup(capability);
++
++		if (agent_manager)
++			agent_register(dbus_conn, agent_manager,
++						auto_register_agent);
++		else
++			rl_printf("Agent registration enabled\n");
++	} else {
++		g_free(auto_register_agent);
++		auto_register_agent = NULL;
++
++		if (agent_manager)
++			agent_unregister(dbus_conn, agent_manager);
++		else
++			rl_printf("Agent registration disabled\n");
++	}
++}
++
++static void cmd_default_agent(const char *arg)
++{
++	agent_default(dbus_conn, agent_manager);
++}
++
++static void start_discovery_reply(DBusMessage *message, void *user_data)
++{
++	dbus_bool_t enable = GPOINTER_TO_UINT(user_data);
++	DBusError error;
++
++	dbus_error_init(&error);
++
++	if (dbus_set_error_from_message(&error, message) == TRUE) {
++		rl_printf("Failed to %s discovery: %s\n",
++				enable == TRUE ? "start" : "stop", error.name);
++		dbus_error_free(&error);
++		return;
++	}
++
++	rl_printf("Discovery %s\n", enable == TRUE ? "started" : "stopped");
++}
++
++static void cmd_scan(const char *arg)
++{
++	dbus_bool_t enable;
++	const char *method;
++
++	if (parse_argument_on_off(arg, &enable) == FALSE)
++		return;
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	if (enable == TRUE)
++		method = "StartDiscovery";
++	else
++		method = "StopDiscovery";
++
++	if (g_dbus_proxy_method_call(default_ctrl->proxy, method,
++				NULL, start_discovery_reply,
++				GUINT_TO_POINTER(enable), NULL) == FALSE) {
++		rl_printf("Failed to %s discovery\n",
++					enable == TRUE ? "start" : "stop");
++		return;
++	}
++}
++
++static void append_variant(DBusMessageIter *iter, int type, void *val)
++{
++	DBusMessageIter value;
++	char sig[2] = { type, '\0' };
++
++	dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT, sig, &value);
++
++	dbus_message_iter_append_basic(&value, type, val);
++
++	dbus_message_iter_close_container(iter, &value);
++}
++
++static void append_array_variant(DBusMessageIter *iter, int type, void *val,
++							int n_elements)
++{
++	DBusMessageIter variant, array;
++	char type_sig[2] = { type, '\0' };
++	char array_sig[3] = { DBUS_TYPE_ARRAY, type, '\0' };
++
++	dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT,
++						array_sig, &variant);
++
++	dbus_message_iter_open_container(&variant, DBUS_TYPE_ARRAY,
++						type_sig, &array);
++
++	if (dbus_type_is_fixed(type) == TRUE) {
++		dbus_message_iter_append_fixed_array(&array, type, val,
++							n_elements);
++	} else if (type == DBUS_TYPE_STRING || type == DBUS_TYPE_OBJECT_PATH) {
++		const char ***str_array = val;
++		int i;
++
++		for (i = 0; i < n_elements; i++)
++			dbus_message_iter_append_basic(&array, type,
++							&((*str_array)[i]));
++	}
++
++	dbus_message_iter_close_container(&variant, &array);
++
++	dbus_message_iter_close_container(iter, &variant);
++}
++
++static void dict_append_entry(DBusMessageIter *dict, const char *key,
++							int type, void *val)
++{
++	DBusMessageIter entry;
++
++	if (type == DBUS_TYPE_STRING) {
++		const char *str = *((const char **) val);
++
++		if (str == NULL)
++			return;
++	}
++
++	dbus_message_iter_open_container(dict, DBUS_TYPE_DICT_ENTRY,
++							NULL, &entry);
++
++	dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &key);
++
++	append_variant(&entry, type, val);
++
++	dbus_message_iter_close_container(dict, &entry);
++}
++
++static void dict_append_basic_array(DBusMessageIter *dict, int key_type,
++					const void *key, int type, void *val,
++					int n_elements)
++{
++	DBusMessageIter entry;
++
++	dbus_message_iter_open_container(dict, DBUS_TYPE_DICT_ENTRY,
++						NULL, &entry);
++
++	dbus_message_iter_append_basic(&entry, key_type, key);
++
++	append_array_variant(&entry, type, val, n_elements);
++
++	dbus_message_iter_close_container(dict, &entry);
++}
++
++static void dict_append_array(DBusMessageIter *dict, const char *key, int type,
++						void *val, int n_elements)
++{
++	dict_append_basic_array(dict, DBUS_TYPE_STRING, &key, type, val,
++								n_elements);
++}
++
++#define	DISTANCE_VAL_INVALID	0x7FFF
++
++struct set_discovery_filter_args {
++	char *transport;
++	dbus_uint16_t rssi;
++	dbus_int16_t pathloss;
++	char **uuids;
++	size_t uuids_len;
++};
++
++static void set_discovery_filter_setup(DBusMessageIter *iter, void *user_data)
++{
++	struct set_discovery_filter_args *args = user_data;
++	DBusMessageIter dict;
++
++	dbus_message_iter_open_container(iter, DBUS_TYPE_ARRAY,
++				DBUS_DICT_ENTRY_BEGIN_CHAR_AS_STRING
++				DBUS_TYPE_STRING_AS_STRING
++				DBUS_TYPE_VARIANT_AS_STRING
++				DBUS_DICT_ENTRY_END_CHAR_AS_STRING, &dict);
++
++	dict_append_array(&dict, "UUIDs", DBUS_TYPE_STRING, &args->uuids,
++							args->uuids_len);
++
++	if (args->pathloss != DISTANCE_VAL_INVALID)
++		dict_append_entry(&dict, "Pathloss", DBUS_TYPE_UINT16,
++						&args->pathloss);
++
++	if (args->rssi != DISTANCE_VAL_INVALID)
++		dict_append_entry(&dict, "RSSI", DBUS_TYPE_INT16, &args->rssi);
++
++	if (args->transport != NULL)
++		dict_append_entry(&dict, "Transport", DBUS_TYPE_STRING,
++						&args->transport);
++
++	dbus_message_iter_close_container(iter, &dict);
++}
++
++
++static void set_discovery_filter_reply(DBusMessage *message, void *user_data)
++{
++	DBusError error;
++
++	dbus_error_init(&error);
++	if (dbus_set_error_from_message(&error, message) == TRUE) {
++		rl_printf("SetDiscoveryFilter failed: %s\n", error.name);
++		dbus_error_free(&error);
++		return;
++	}
++
++	rl_printf("SetDiscoveryFilter success\n");
++}
++
++static gint filtered_scan_rssi = DISTANCE_VAL_INVALID;
++static gint filtered_scan_pathloss = DISTANCE_VAL_INVALID;
++static char **filtered_scan_uuids;
++static size_t filtered_scan_uuids_len;
++static char *filtered_scan_transport;
++
++static void cmd_set_scan_filter_commit(void)
++{
++	struct set_discovery_filter_args args;
++
++	args.uuids = NULL;
++	args.pathloss = filtered_scan_pathloss;
++	args.rssi = filtered_scan_rssi;
++	args.transport = filtered_scan_transport;
++	args.uuids = filtered_scan_uuids;
++	args.uuids_len = filtered_scan_uuids_len;
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	if (g_dbus_proxy_method_call(default_ctrl->proxy, "SetDiscoveryFilter",
++		set_discovery_filter_setup, set_discovery_filter_reply,
++		&args, NULL) == FALSE) {
++		rl_printf("Failed to set discovery filter\n");
++		return;
++	}
++}
++
++static void cmd_set_scan_filter_uuids(const char *arg)
++{
++	g_strfreev(filtered_scan_uuids);
++	filtered_scan_uuids = NULL;
++	filtered_scan_uuids_len = 0;
++
++	if (!arg || !strlen(arg))
++		goto commit;
++
++	filtered_scan_uuids = g_strsplit(arg, " ", -1);
++	if (!filtered_scan_uuids) {
++		rl_printf("Failed to parse input\n");
++		return;
++	}
++
++	filtered_scan_uuids_len = g_strv_length(filtered_scan_uuids);
++
++commit:
++	cmd_set_scan_filter_commit();
++}
++
++static void cmd_set_scan_filter_rssi(const char *arg)
++{
++	filtered_scan_pathloss = DISTANCE_VAL_INVALID;
++
++	if (!arg || !strlen(arg))
++		filtered_scan_rssi = DISTANCE_VAL_INVALID;
++	else
++		filtered_scan_rssi = atoi(arg);
++
++	cmd_set_scan_filter_commit();
++}
++
++static void cmd_set_scan_filter_pathloss(const char *arg)
++{
++	filtered_scan_rssi = DISTANCE_VAL_INVALID;
++
++	if (!arg || !strlen(arg))
++		filtered_scan_pathloss = DISTANCE_VAL_INVALID;
++	else
++		filtered_scan_pathloss = atoi(arg);
++
++	cmd_set_scan_filter_commit();
++}
++
++static void cmd_set_scan_filter_transport(const char *arg)
++{
++	g_free(filtered_scan_transport);
++
++	if (!arg || !strlen(arg))
++		filtered_scan_transport = NULL;
++	else
++		filtered_scan_transport = g_strdup(arg);
++
++	cmd_set_scan_filter_commit();
++}
++
++static void clear_discovery_filter_setup(DBusMessageIter *iter, void *user_data)
++{
++	DBusMessageIter dict;
++
++	dbus_message_iter_open_container(iter, DBUS_TYPE_ARRAY,
++				DBUS_DICT_ENTRY_BEGIN_CHAR_AS_STRING
++				DBUS_TYPE_STRING_AS_STRING
++				DBUS_TYPE_VARIANT_AS_STRING
++				DBUS_DICT_ENTRY_END_CHAR_AS_STRING, &dict);
++
++	dbus_message_iter_close_container(iter, &dict);
++}
++
++static void cmd_set_scan_filter_clear(const char *arg)
++{
++	/* set default values for all options */
++	filtered_scan_rssi = DISTANCE_VAL_INVALID;
++	filtered_scan_pathloss = DISTANCE_VAL_INVALID;
++	g_strfreev(filtered_scan_uuids);
++	filtered_scan_uuids = NULL;
++	filtered_scan_uuids_len = 0;
++	g_free(filtered_scan_transport);
++	filtered_scan_transport = NULL;
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	if (g_dbus_proxy_method_call(default_ctrl->proxy, "SetDiscoveryFilter",
++		clear_discovery_filter_setup, set_discovery_filter_reply,
++		NULL, NULL) == FALSE) {
++		rl_printf("Failed to clear discovery filter\n");
++	}
++}
++
++static struct GDBusProxy *find_device(const char *arg)
++{
++	GDBusProxy *proxy;
++
++	if (!arg || !strlen(arg)) {
++		if (default_dev)
++			return default_dev;
++		rl_printf("Missing device address argument\n");
++		return NULL;
++	}
++
++	if (check_default_ctrl() == FALSE)
++		return NULL;
++
++	proxy = find_proxy_by_address(default_ctrl->devices, arg);
++	if (!proxy) {
++		rl_printf("Device %s not available\n", arg);
++		return NULL;
++	}
++
++	return proxy;
++}
++
++static void cmd_info(const char *arg)
++{
++	GDBusProxy *proxy;
++	DBusMessageIter iter;
++	const char *address;
++
++	proxy = find_device(arg);
++	if (!proxy)
++		return;
++
++	if (g_dbus_proxy_get_property(proxy, "Address", &iter) == FALSE)
++		return;
++
++	dbus_message_iter_get_basic(&iter, &address);
++	rl_printf("Device %s\n", address);
++
++	print_property(proxy, "Name");
++	print_property(proxy, "Alias");
++	print_property(proxy, "Class");
++	print_property(proxy, "Appearance");
++	print_property(proxy, "Icon");
++	print_property(proxy, "Paired");
++	print_property(proxy, "Trusted");
++	print_property(proxy, "Blocked");
++	print_property(proxy, "Connected");
++	print_property(proxy, "LegacyPairing");
++        is_EddystoneBeacon = false;
++	print_uuids(proxy);
++	print_property(proxy, "Modalias");
++        manu_or_service_data_index = 0;
++        multi_byte_value_flag = 1;        
++	print_property(proxy, "ManufacturerData");
++        multi_byte_value_flag = 1;
++	print_property(proxy, "ServiceData");
++        multi_byte_value_flag = 0;
++        uint8_t index;
++        rl_printf("\tManufacture/Service Data: ");
++        for(index = 0; index < manu_or_service_data_index; index++)
++            rl_printf("%02x", manu_or_service_data[index]);
++        rl_printf("\n");
++        if(is_EddystoneBeacon == true && manu_or_service_data[0] == 0x10)
++        { 
++            uint8_t prefix[20], site_name[50], domain[10];
++            if(manu_or_service_data[2] == 0x00)
++                 sprintf(prefix, "http://www.");
++            else if(manu_or_service_data[2] == 0x01)
++                 sprintf(prefix, "https://www.");
++            else if(manu_or_service_data[2] == 0x02)
++                 sprintf(prefix, "http://");
++            else if(manu_or_service_data[2] == 0x03)
++                 sprintf(prefix, "https://");
++            else 
++                 sprintf(prefix, "invalid prefix");
++            if(manu_or_service_data[manu_or_service_data_index - 1] == 0x00)
++                 sprintf(domain, ".com/");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x00)
++                 sprintf(domain, ".com/");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x01)
++                 sprintf(domain, ".org/");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x02)
++                 sprintf(domain, ".edu/");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x03)
++                 sprintf(domain, ".net/");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x04)
++                 sprintf(domain, ".info/");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x05)
++                 sprintf(domain, ".biz/");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x06)
++                 sprintf(domain, ".gov/");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x07)
++                 sprintf(domain, ".com");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x08)
++                 sprintf(domain, ".org");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x09)
++                 sprintf(domain, ".edu");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x0a)
++                 sprintf(domain, ".net");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x0b)
++                 sprintf(domain, ".info");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x0c)
++                 sprintf(domain, ".biz");
++            else if(manu_or_service_data[manu_or_service_data_index - 1] == 0x0d)
++                 sprintf(domain, ".gov");
++            else
++                 sprintf(domain, "");
++            for(index = 0; index < (manu_or_service_data_index - 4); index++)
++                 site_name[index] = manu_or_service_data[index + 3];
++            if(!strcmp(domain, ""))
++            {
++                site_name[index] = manu_or_service_data[index + 3];
++                site_name[index + 1] = '\0';
++            }
++            else
++                 site_name[index] = '\0';
++            rl_printf("\tURL : %s%s%s\n", prefix, site_name, domain);
++        }
++        manu_or_service_data_index = 0;
++	print_property(proxy, "RSSI");
++	print_property(proxy, "TxPower");
++        is_EddystoneBeacon = false;
++}
++
++static void pair_reply(DBusMessage *message, void *user_data)
++{
++	DBusError error;
++
++	dbus_error_init(&error);
++
++	if (dbus_set_error_from_message(&error, message) == TRUE) {
++		rl_printf("Failed to pair: %s\n", error.name);
++		dbus_error_free(&error);
++		return;
++	}
++
++	rl_printf("Pairing successful\n");
++}
++
++static void cmd_pair(const char *arg)
++{
++	GDBusProxy *proxy;
++
++	proxy = find_device(arg);
++	if (!proxy)
++		return;
++
++	if (g_dbus_proxy_method_call(proxy, "Pair", NULL, pair_reply,
++							NULL, NULL) == FALSE) {
++		rl_printf("Failed to pair\n");
++		return;
++	}
++
++	rl_printf("Attempting to pair with %s\n", arg);
++}
++
++static void cmd_trust(const char *arg)
++{
++	GDBusProxy *proxy;
++	dbus_bool_t trusted;
++	char *str;
++
++	proxy = find_device(arg);
++	if (!proxy)
++		return;
++
++	trusted = TRUE;
++
++	str = g_strdup_printf("%s trust", arg);
++
++	if (g_dbus_proxy_set_property_basic(proxy, "Trusted",
++					DBUS_TYPE_BOOLEAN, &trusted,
++					generic_callback, str, g_free) == TRUE)
++		return;
++
++	g_free(str);
++}
++
++static void cmd_untrust(const char *arg)
++{
++	GDBusProxy *proxy;
++	dbus_bool_t trusted;
++	char *str;
++
++	proxy = find_device(arg);
++	if (!proxy)
++		return;
++
++	trusted = FALSE;
++
++	str = g_strdup_printf("%s untrust", arg);
++
++	if (g_dbus_proxy_set_property_basic(proxy, "Trusted",
++					DBUS_TYPE_BOOLEAN, &trusted,
++					generic_callback, str, g_free) == TRUE)
++		return;
++
++	g_free(str);
++}
++
++static void cmd_block(const char *arg)
++{
++	GDBusProxy *proxy;
++	dbus_bool_t blocked;
++	char *str;
++
++	proxy = find_device(arg);
++	if (!proxy)
++		return;
++
++	blocked = TRUE;
++
++	str = g_strdup_printf("%s block", arg);
++
++	if (g_dbus_proxy_set_property_basic(proxy, "Blocked",
++					DBUS_TYPE_BOOLEAN, &blocked,
++					generic_callback, str, g_free) == TRUE)
++		return;
++
++	g_free(str);
++}
++
++static void cmd_unblock(const char *arg)
++{
++	GDBusProxy *proxy;
++	dbus_bool_t blocked;
++	char *str;
++
++	proxy = find_device(arg);
++	if (!proxy)
++		return;
++
++	blocked = FALSE;
++
++	str = g_strdup_printf("%s unblock", arg);
++
++	if (g_dbus_proxy_set_property_basic(proxy, "Blocked",
++					DBUS_TYPE_BOOLEAN, &blocked,
++					generic_callback, str, g_free) == TRUE)
++		return;
++
++	g_free(str);
++}
++
++static void remove_device_reply(DBusMessage *message, void *user_data)
++{
++	DBusError error;
++
++	dbus_error_init(&error);
++
++	if (dbus_set_error_from_message(&error, message) == TRUE) {
++		rl_printf("Failed to remove device: %s\n", error.name);
++		dbus_error_free(&error);
++		return;
++	}
++
++	rl_printf("Device has been removed\n");
++}
++
++static void remove_device_setup(DBusMessageIter *iter, void *user_data)
++{
++	const char *path = user_data;
++
++	dbus_message_iter_append_basic(iter, DBUS_TYPE_OBJECT_PATH, &path);
++}
++
++static void remove_device(GDBusProxy *proxy)
++{
++	char *path;
++
++	path = g_strdup(g_dbus_proxy_get_path(proxy));
++
++	if (!default_ctrl)
++		return;
++
++	if (g_dbus_proxy_method_call(default_ctrl->proxy, "RemoveDevice",
++						remove_device_setup,
++						remove_device_reply,
++						path, g_free) == FALSE) {
++		rl_printf("Failed to remove device\n");
++		g_free(path);
++	}
++}
++
++static void cmd_remove(const char *arg)
++{
++	GDBusProxy *proxy;
++
++	if (!arg || !strlen(arg)) {
++		rl_printf("Missing device address argument\n");
++		return;
++	}
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	if (strcmp(arg, "*") == 0) {
++		GList *list;
++
++		for (list = default_ctrl->devices; list;
++						list = g_list_next(list)) {
++			GDBusProxy *proxy = list->data;
++
++			remove_device(proxy);
++		}
++		return;
++	}
++
++	proxy = find_proxy_by_address(default_ctrl->devices, arg);
++	if (!proxy) {
++		rl_printf("Device %s not available\n", arg);
++		return;
++	}
++
++	remove_device(proxy);
++}
++
++static void connect_reply(DBusMessage *message, void *user_data)
++{
++	GDBusProxy *proxy = user_data;
++	DBusError error;
++
++	dbus_error_init(&error);
++
++	if (dbus_set_error_from_message(&error, message) == TRUE) {
++		rl_printf("Failed to connect: %s\n", error.name);
++		dbus_error_free(&error);
++		return;
++	}
++
++	rl_printf("Connection successful\n");
++
++	set_default_device(proxy, NULL);
++}
++
++static void cmd_connect(const char *arg)
++{
++	GDBusProxy *proxy;
++
++	if (!arg || !strlen(arg)) {
++		rl_printf("Missing device address argument\n");
++		return;
++	}
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	proxy = find_proxy_by_address(default_ctrl->devices, arg);
++	if (!proxy) {
++		rl_printf("Device %s not available\n", arg);
++		return;
++	}
++
++	if (g_dbus_proxy_method_call(proxy, "Connect", NULL, connect_reply,
++							proxy, NULL) == FALSE) {
++		rl_printf("Failed to connect\n");
++		return;
++	}
++
++	rl_printf("Attempting to connect to %s\n", arg);
++}
++
++static void disconn_reply(DBusMessage *message, void *user_data)
++{
++	GDBusProxy *proxy = user_data;
++	DBusError error;
++
++	dbus_error_init(&error);
++
++	if (dbus_set_error_from_message(&error, message) == TRUE) {
++		rl_printf("Failed to disconnect: %s\n", error.name);
++		dbus_error_free(&error);
++		return;
++	}
++
++	rl_printf("Successful disconnected\n");
++
++	if (proxy != default_dev)
++		return;
++
++	set_default_device(NULL, NULL);
++}
++
++static void cmd_disconn(const char *arg)
++{
++	GDBusProxy *proxy;
++
++	proxy = find_device(arg);
++	if (!proxy)
++		return;
++
++	if (g_dbus_proxy_method_call(proxy, "Disconnect", NULL, disconn_reply,
++							proxy, NULL) == FALSE) {
++		rl_printf("Failed to disconnect\n");
++		return;
++	}
++	if (strlen(arg) == 0) {
++		DBusMessageIter iter;
++
++		if (g_dbus_proxy_get_property(proxy, "Address", &iter) == TRUE)
++			dbus_message_iter_get_basic(&iter, &arg);
++	}
++	rl_printf("Attempting to disconnect from %s\n", arg);
++}
++
++static void cmd_list_attributes(const char *arg)
++{
++	GDBusProxy *proxy;
++
++	proxy = find_device(arg);
++	if (!proxy)
++		return;
++
++	gatt_list_attributes(g_dbus_proxy_get_path(proxy));
++}
++
++static void cmd_set_alias(const char *arg)
++{
++	char *name;
++
++	if (!arg || !strlen(arg)) {
++		rl_printf("Missing name argument\n");
++		return;
++	}
++
++	if (!default_dev) {
++		rl_printf("No device connected\n");
++		return;
++	}
++
++	name = g_strdup(arg);
++
++	if (g_dbus_proxy_set_property_basic(default_dev, "Alias",
++					DBUS_TYPE_STRING, &name,
++					generic_callback, name, g_free) == TRUE)
++		return;
++
++	g_free(name);
++}
++
++static void cmd_select_attribute(const char *arg)
++{
++	GDBusProxy *proxy;
++
++	if (!arg || !strlen(arg)) {
++		rl_printf("Missing attribute argument\n");
++		return;
++	}
++
++	if (!default_dev) {
++		rl_printf("No device connected\n");
++		return;
++	}
++
++	proxy = gatt_select_attribute(arg);
++	if (proxy)
++		set_default_attribute(proxy);
++}
++
++static struct GDBusProxy *find_attribute(const char *arg)
++{
++	GDBusProxy *proxy;
++
++	if (!arg || !strlen(arg)) {
++		if (default_attr)
++			return default_attr;
++		rl_printf("Missing attribute argument\n");
++		return NULL;
++	}
++
++	proxy = gatt_select_attribute(arg);
++	if (!proxy) {
++		rl_printf("Attribute %s not available\n", arg);
++		return NULL;
++	}
++
++	return proxy;
++}
++
++static void cmd_attribute_info(const char *arg)
++{
++	GDBusProxy *proxy;
++	DBusMessageIter iter;
++	const char *iface, *uuid, *text;
++
++	proxy = find_attribute(arg);
++	if (!proxy)
++		return;
++
++	if (g_dbus_proxy_get_property(proxy, "UUID", &iter) == FALSE)
++		return;
++
++	dbus_message_iter_get_basic(&iter, &uuid);
++
++	text = uuidstr_to_str(uuid);
++	if (!text)
++		text = g_dbus_proxy_get_path(proxy);
++
++	iface = g_dbus_proxy_get_interface(proxy);
++	if (!strcmp(iface, "org.bluez.GattService1")) {
++		rl_printf("Service - %s\n", text);
++
++		print_property(proxy, "UUID");
++		print_property(proxy, "Primary");
++		print_property(proxy, "Characteristics");
++		print_property(proxy, "Includes");
++	} else if (!strcmp(iface, "org.bluez.GattCharacteristic1")) {
++		rl_printf("Characteristic - %s\n", text);
++
++		print_property(proxy, "UUID");
++		print_property(proxy, "Service");
++		print_property(proxy, "Value");
++		print_property(proxy, "Notifying");
++		print_property(proxy, "Flags");
++		print_property(proxy, "Descriptors");
++	} else if (!strcmp(iface, "org.bluez.GattDescriptor1")) {
++		rl_printf("Descriptor - %s\n", text);
++
++		print_property(proxy, "UUID");
++		print_property(proxy, "Characteristic");
++		print_property(proxy, "Value");
++	}
++}
++
++static void cmd_read(const char *arg)
++{
++	if (!default_attr) {
++		rl_printf("No attribute selected\n");
++		return;
++	}
++
++	gatt_read_attribute(default_attr);
++}
++
++static void cmd_write(const char *arg)
++{
++	if (!arg || !strlen(arg)) {
++		rl_printf("Missing data argument\n");
++		return;
++	}
++
++	if (!default_attr) {
++		rl_printf("No attribute selected\n");
++		return;
++	}
++
++	gatt_write_attribute(default_attr, arg);
++}
++
++static void cmd_notify(const char *arg)
++{
++	dbus_bool_t enable;
++
++	if (parse_argument_on_off(arg, &enable) == FALSE)
++		return;
++
++	if (!default_attr) {
++		rl_printf("No attribute selected\n");
++		return;
++	}
++
++	gatt_notify_attribute(default_attr, enable ? true : false);
++}
++
++static void cmd_register_profile(const char *arg)
++{
++	wordexp_t w;
++
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	if (wordexp(arg, &w, WRDE_NOCMD)) {
++		rl_printf("Invalid argument\n");
++		return;
++	}
++
++	if (w.we_wordc == 0) {
++		rl_printf("Missing argument\n");
++		return;
++	}
++
++	gatt_register_profile(dbus_conn, default_ctrl->proxy, &w);
++
++	wordfree(&w);
++}
++
++static void cmd_unregister_profile(const char *arg)
++{
++	if (check_default_ctrl() == FALSE)
++		return;
++
++	gatt_unregister_profile(dbus_conn, default_ctrl->proxy);
++}
++
++static void cmd_version(const char *arg)
++{
++	rl_printf("Version %s\n", VERSION);
++}
++
++static void cmd_quit(const char *arg)
++{
++	g_main_loop_quit(main_loop);
++}
++
++static char *generic_generator(const char *text, int state,
++					GList *source, const char *property)
++{
++	static int index, len;
++	GList *list;
++
++	if (!state) {
++		index = 0;
++		len = strlen(text);
++	}
++
++	for (list = g_list_nth(source, index); list;
++						list = g_list_next(list)) {
++		GDBusProxy *proxy = list->data;
++		DBusMessageIter iter;
++		const char *str;
++
++		index++;
++
++		if (g_dbus_proxy_get_property(proxy, property, &iter) == FALSE)
++			continue;
++
++		dbus_message_iter_get_basic(&iter, &str);
++
++		if (!strncmp(str, text, len))
++			return strdup(str);
++        }
++
++	return NULL;
++}
++
++static char *ctrl_generator(const char *text, int state)
++{
++	static int index = 0;
++	static int len = 0;
++	GList *list;
++
++	if (!state) {
++		index = 0;
++		len = strlen(text);
++	}
++
++	for (list = g_list_nth(ctrl_list, index); list;
++						list = g_list_next(list)) {
++		struct adapter *adapter = list->data;
++		DBusMessageIter iter;
++		const char *str;
++
++		index++;
++
++		if (g_dbus_proxy_get_property(adapter->proxy,
++					"Address", &iter) == FALSE)
++			continue;
++
++		dbus_message_iter_get_basic(&iter, &str);
++
++		if (!strncmp(str, text, len))
++			return strdup(str);
++	}
++
++	return NULL;
++}
++
++static char *dev_generator(const char *text, int state)
++{
++	return generic_generator(text, state,
++			default_ctrl ? default_ctrl->devices : NULL, "Address");
++}
++
++static char *attribute_generator(const char *text, int state)
++{
++	return gatt_attribute_generator(text, state);
++}
++
++static char *capability_generator(const char *text, int state)
++{
++	static int index, len;
++	const char *arg;
++
++	if (!state) {
++		index = 0;
++		len = strlen(text);
++	}
++
++	while ((arg = agent_arguments[index])) {
++		index++;
++
++		if (!strncmp(arg, text, len))
++			return strdup(arg);
++	}
++
++	return NULL;
++}
++
++static gboolean parse_argument_advertise(const char *arg, dbus_bool_t *value,
++							const char **type)
++{
++	const char * const *opt;
++
++	if (arg == NULL || strlen(arg) == 0) {
++		rl_printf("Missing on/off/type argument\n");
++		return FALSE;
++	}
++
++	if (strcmp(arg, "on") == 0 || strcmp(arg, "yes") == 0) {
++		*value = TRUE;
++		*type = "";
++		return TRUE;
++	}
++
++	if (strcmp(arg, "off") == 0 || strcmp(arg, "no") == 0) {
++		*value = FALSE;
++		return TRUE;
++	}
++
++	for (opt = ad_arguments; *opt; opt++) {
++		if (strcmp(arg, *opt) == 0) {
++			*value = TRUE;
++			*type = *opt;
++			return TRUE;
++		}
++	}
++
++	rl_printf("Invalid argument %s\n", arg);
++	return FALSE;
++}
++
++static void cmd_advertise(const char *arg)
++{
++	dbus_bool_t enable;
++	const char *type;
++
++	if (parse_argument_advertise(arg, &enable, &type) == FALSE)
++		return;
++
++	if (!ad_manager) {
++		rl_printf("LEAdvertisingManager not found\n");
++		return;
++	}
++
++	if (enable == TRUE)
++		ad_register(dbus_conn, ad_manager, type);
++	else
++		ad_unregister(dbus_conn, ad_manager);
++}
++
++static char *ad_generator(const char *text, int state)
++{
++	static int index, len;
++	const char *arg;
++
++	if (!state) {
++		index = 0;
++		len = strlen(text);
++	}
++
++	while ((arg = ad_arguments[index])) {
++		index++;
++
++		if (!strncmp(arg, text, len))
++			return strdup(arg);
++	}
++
++	return NULL;
++}
++
++static void cmd_set_advertise_uuids(const char *arg)
++{
++	ad_advertise_uuids(arg);
++}
++
++static void cmd_set_advertise_service(const char *arg)
++{
++	ad_advertise_service(arg);
++}
++
++static void cmd_set_advertise_manufacturer(const char *arg)
++{
++	ad_advertise_manufacturer(arg);
++}
++
++static void cmd_set_advertise_tx_power(const char *arg)
++{
++	if (arg == NULL || strlen(arg) == 0) {
++		rl_printf("Missing on/off argument\n");
++		return;
++	}
++
++	if (strcmp(arg, "on") == 0 || strcmp(arg, "yes") == 0) {
++		ad_advertise_tx_power(TRUE);
++		return;
++	}
++
++	if (strcmp(arg, "off") == 0 || strcmp(arg, "no") == 0) {
++		ad_advertise_tx_power(FALSE);
++		return;
++	}
++
++	rl_printf("Invalid argument\n");
++}
++
++static const struct {
++	const char *cmd;
++	const char *arg;
++	void (*func) (const char *arg);
++	const char *desc;
++	char * (*gen) (const char *text, int state);
++	void (*disp) (char **matches, int num_matches, int max_length);
++} cmd_table[] = {
++	{ "list",         NULL,       cmd_list, "List available controllers" },
++	{ "show",         "[ctrl]",   cmd_show, "Controller information",
++							ctrl_generator },
++	{ "select",       "<ctrl>",   cmd_select, "Select default controller",
++							ctrl_generator },
++	{ "devices",      NULL,       cmd_devices, "List available devices" },
++	/*{ "paired-devices", NULL,     cmd_paired_devices,
++					"List paired devices"},
++	{ "system-alias", "<name>",   cmd_system_alias },
++	{ "reset-alias",  NULL,       cmd_reset_alias },
++	{ "power",        "<on/off>", cmd_power, "Set controller power" },
++	{ "pairable",     "<on/off>", cmd_pairable,
++					"Set controller pairable mode" },
++	{ "discoverable", "<on/off>", cmd_discoverable,
++					"Set controller discoverable mode" },
++	{ "agent",        "<on/off/capability>", cmd_agent,
++				"Enable/disable agent with given capability",
++							capability_generator},
++	{ "default-agent",NULL,       cmd_default_agent,
++				"Set agent as the default one" },
++	{ "advertise",    "<on/off/type>", cmd_advertise,
++				"Enable/disable advertising with given type",
++							ad_generator},
++	{ "set-advertise-uuids", "[uuid1 uuid2 ...]",
++			cmd_set_advertise_uuids, "Set advertise uuids" },
++	{ "set-advertise-service", "[uuid][data=[xx xx ...]",
++			cmd_set_advertise_service,
++			"Set advertise service data" },
++	{ "set-advertise-manufacturer", "[id][data=[xx xx ...]",
++			cmd_set_advertise_manufacturer,
++			"Set advertise manufacturer data" },
++	{ "set-advertise-tx-power", "<on/off>",
++			cmd_set_advertise_tx_power,
++			"Enable/disable TX power to be advertised" },
++	{ "set-scan-filter-uuids", "[uuid1 uuid2 ...]",
++			cmd_set_scan_filter_uuids, "Set scan filter uuids" },
++	{ "set-scan-filter-rssi", "[rssi]", cmd_set_scan_filter_rssi,
++				"Set scan filter rssi, and clears pathloss" },
++	{ "set-scan-filter-pathloss", "[pathloss]",
++						cmd_set_scan_filter_pathloss,
++				"Set scan filter pathloss, and clears rssi" },
++	{ "set-scan-filter-transport", "[transport]",
++		cmd_set_scan_filter_transport, "Set scan filter transport" },
++	{ "set-scan-filter-clear", "", cmd_set_scan_filter_clear,
++						"Clears discovery filter." },*/
++	{ "scan",         "<on/off>", cmd_scan, "Scan for devices" },
++	{ "info",         "[dev]",    cmd_info, "Device information",
++							dev_generator },
++	/*{ "pair",         "[dev]",    cmd_pair, "Pair with device",
++							dev_generator },
++	{ "trust",        "[dev]",    cmd_trust, "Trust device",
++							dev_generator },
++	{ "untrust",      "[dev]",    cmd_untrust, "Untrust device",
++							dev_generator },
++	{ "block",        "[dev]",    cmd_block, "Block device",
++								dev_generator },
++	{ "unblock",      "[dev]",    cmd_unblock, "Unblock device",
++								dev_generator },*/
++	{ "remove",       "<dev>",    cmd_remove, "Remove device",
++							dev_generator },
++	/*{ "connect",      "<dev>",    cmd_connect, "Connect device",
++							dev_generator },
++	{ "disconnect",   "[dev]",    cmd_disconn, "Disconnect device",
++							dev_generator },
++	{ "list-attributes", "[dev]", cmd_list_attributes, "List attributes",
++							dev_generator },
++	{ "set-alias",    "<alias>",  cmd_set_alias, "Set device alias" },
++	{ "select-attribute", "<attribute>",  cmd_select_attribute,
++				"Select attribute", attribute_generator },
++	{ "attribute-info", "[attribute]",  cmd_attribute_info,
++				"Select attribute", attribute_generator },
++	{ "read",         NULL,       cmd_read, "Read attribute value" },
++	{ "write",        "<data=[xx xx ...]>", cmd_write,
++						"Write attribute value" },
++	{ "notify",       "<on/off>", cmd_notify, "Notify attribute value" },
++	{ "register-profile", "<UUID ...>", cmd_register_profile,
++						"Register profile to connect" },
++	{ "unregister-profile", NULL, cmd_unregister_profile,
++						"Unregister profile" },*/
++	{ "version",      NULL,       cmd_version, "Display version" },
++	{ "quit",         NULL,       cmd_quit, "Quit program" },
++	{ "exit",         NULL,       cmd_quit },
++	{ "help" },
++	{ }
++};
++
++static char *cmd_generator(const char *text, int state)
++{
++	static int index, len;
++	const char *cmd;
++
++	if (!state) {
++		index = 0;
++		len = strlen(text);
++	}
++
++	while ((cmd = cmd_table[index].cmd)) {
++		index++;
++
++		if (!strncmp(cmd, text, len))
++			return strdup(cmd);
++	}
++
++	return NULL;
++}
++
++static char **cmd_completion(const char *text, int start, int end)
++{
++	char **matches = NULL;
++
++	if (agent_completion() == TRUE) {
++		rl_attempted_completion_over = 1;
++		return NULL;
++	}
++
++	if (start > 0) {
++		int i;
++
++		for (i = 0; cmd_table[i].cmd; i++) {
++			if (strncmp(cmd_table[i].cmd,
++					rl_line_buffer, start - 1))
++				continue;
++
++			if (!cmd_table[i].gen)
++				continue;
++
++			rl_completion_display_matches_hook = cmd_table[i].disp;
++			matches = rl_completion_matches(text, cmd_table[i].gen);
++			break;
++		}
++	} else {
++		rl_completion_display_matches_hook = NULL;
++		matches = rl_completion_matches(text, cmd_generator);
++	}
++
++	if (!matches)
++		rl_attempted_completion_over = 1;
++
++	return matches;
++}
++
++static void rl_handler(char *input)
++{
++	char *cmd, *arg;
++	int i;
++
++	if (!input) {
++		rl_insert_text("quit");
++		rl_redisplay();
++		rl_crlf();
++		g_main_loop_quit(main_loop);
++		return;
++	}
++
++	if (!strlen(input))
++		goto done;
++
++	if (agent_input(dbus_conn, input) == TRUE)
++		goto done;
++
++	add_history(input);
++
++	cmd = strtok_r(input, " ", &arg);
++	if (!cmd)
++		goto done;
++
++	if (arg) {
++		int len = strlen(arg);
++		if (len > 0 && arg[len - 1] == ' ')
++			arg[len - 1] = '\0';
++	}
++
++	for (i = 0; cmd_table[i].cmd; i++) {
++		if (strcmp(cmd, cmd_table[i].cmd))
++			continue;
++
++		if (cmd_table[i].func) {
++			cmd_table[i].func(arg);
++			goto done;
++		}
++	}
++
++	if (strcmp(cmd, "help")) {
++		printf("Invalid command\n");
++		goto done;
++	}
++
++	printf("Available commands:\n");
++
++	for (i = 0; cmd_table[i].cmd; i++) {
++		if (cmd_table[i].desc)
++			printf("  %s %-*s %s\n", cmd_table[i].cmd,
++					(int)(25 - strlen(cmd_table[i].cmd)),
++					cmd_table[i].arg ? : "",
++					cmd_table[i].desc ? : "");
++	}
++
++done:
++	free(input);
++}
++
++static gboolean signal_handler(GIOChannel *channel, GIOCondition condition,
++							gpointer user_data)
++{
++	static bool terminated = false;
++	struct signalfd_siginfo si;
++	ssize_t result;
++	int fd;
++
++	if (condition & (G_IO_NVAL | G_IO_ERR | G_IO_HUP)) {
++		g_main_loop_quit(main_loop);
++		return FALSE;
++	}
++
++	fd = g_io_channel_unix_get_fd(channel);
++
++	result = read(fd, &si, sizeof(si));
++	if (result != sizeof(si))
++		return FALSE;
++
++	switch (si.ssi_signo) {
++	case SIGINT:
++		if (input) {
++			rl_replace_line("", 0);
++			rl_crlf();
++			rl_on_new_line();
++			rl_redisplay();
++			break;
++		}
++
++		/*
++		 * If input was not yet setup up that means signal was received
++		 * while daemon was not yet running. Since user is not able
++		 * to terminate client by CTRL-D or typing exit treat this as
++		 * exit and fall through.
++		 */
++	case SIGTERM:
++		if (!terminated) {
++			rl_replace_line("", 0);
++			rl_crlf();
++			g_main_loop_quit(main_loop);
++		}
++
++		terminated = true;
++		break;
++	}
++
++	return TRUE;
++}
++
++static guint setup_signalfd(void)
++{
++	GIOChannel *channel;
++	guint source;
++	sigset_t mask;
++	int fd;
++
++	sigemptyset(&mask);
++	sigaddset(&mask, SIGINT);
++	sigaddset(&mask, SIGTERM);
++
++	if (sigprocmask(SIG_BLOCK, &mask, NULL) < 0) {
++		perror("Failed to set signal mask");
++		return 0;
++	}
++
++	fd = signalfd(-1, &mask, 0);
++	if (fd < 0) {
++		perror("Failed to create signal descriptor");
++		return 0;
++	}
++
++	channel = g_io_channel_unix_new(fd);
++
++	g_io_channel_set_close_on_unref(channel, TRUE);
++	g_io_channel_set_encoding(channel, NULL, NULL);
++	g_io_channel_set_buffered(channel, FALSE);
++
++	source = g_io_add_watch(channel,
++				G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
++				signal_handler, NULL);
++
++	g_io_channel_unref(channel);
++
++	return source;
++}
++
++static gboolean option_version = FALSE;
++
++static gboolean parse_agent(const char *key, const char *value,
++					gpointer user_data, GError **error)
++{
++	if (value)
++		auto_register_agent = g_strdup(value);
++	else
++		auto_register_agent = g_strdup("");
++
++	return TRUE;
++}
++
++static GOptionEntry options[] = {
++	{ "version", 'v', 0, G_OPTION_ARG_NONE, &option_version,
++				"Show version information and exit" },
++	{ "agent", 'a', G_OPTION_FLAG_OPTIONAL_ARG,
++				G_OPTION_ARG_CALLBACK, parse_agent,
++				"Register agent handler", "CAPABILITY" },
++	{ NULL },
++};
++
++static void client_ready(GDBusClient *client, void *user_data)
++{
++	if (!input)
++		input = setup_standard_input();
++}
++
++int main(int argc, char *argv[])
++{
++	GOptionContext *context;
++	GError *error = NULL;
++	GDBusClient *client;
++	guint signal;
++
++	context = g_option_context_new(NULL);
++	g_option_context_add_main_entries(context, options, NULL);
++
++	if (g_option_context_parse(context, &argc, &argv, &error) == FALSE) {
++		if (error != NULL) {
++			g_printerr("%s\n", error->message);
++			g_error_free(error);
++		} else
++			g_printerr("An unknown error occurred\n");
++		exit(1);
++	}
++
++	g_option_context_free(context);
++
++	if (option_version == TRUE) {
++		printf("%s\n", VERSION);
++		exit(0);
++	}
++
++	main_loop = g_main_loop_new(NULL, FALSE);
++	dbus_conn = g_dbus_setup_bus(DBUS_BUS_SYSTEM, NULL, NULL);
++
++	setlinebuf(stdout);
++	rl_attempted_completion_function = cmd_completion;
++
++	rl_erase_empty_line = 1;
++	rl_callback_handler_install(NULL, rl_handler);
++
++	rl_set_prompt(PROMPT_OFF);
++	rl_redisplay();
++
++	signal = setup_signalfd();
++	client = g_dbus_client_new(dbus_conn, "org.bluez", "/org/bluez");
++
++	g_dbus_client_set_connect_watch(client, connect_handler, NULL);
++	g_dbus_client_set_disconnect_watch(client, disconnect_handler, NULL);
++	g_dbus_client_set_signal_watch(client, message_handler, NULL);
++
++	g_dbus_client_set_proxy_handlers(client, proxy_added, proxy_removed,
++							property_changed, NULL);
++
++	g_dbus_client_set_ready_watch(client, client_ready, NULL);
++
++	g_main_loop_run(main_loop);
++
++	g_dbus_client_unref(client);
++	g_source_remove(signal);
++	if (input > 0)
++		g_source_remove(input);
++
++	rl_message("");
++	rl_callback_handler_remove();
++
++	dbus_connection_unref(dbus_conn);
++	g_main_loop_unref(main_loop);
++
++	g_list_free_full(ctrl_list, proxy_leak);
++
++	g_free(auto_register_agent);
++
++	return 0;
++}
+diff -ruN --new-file bluez_utils-5.43/Makefile.in bluez_utils-5.43_mod_2/Makefile.in
 --- bluez_utils-5.43/Makefile.in	2017-06-14 18:25:33.843679806 +0530
-+++ bluez_utils-5.43_mod/Makefile.in	2017-09-18 11:19:43.426696870 +0530
-@@ -83,8 +83,7 @@
++++ bluez_utils-5.43_mod_2/Makefile.in	2019-07-15 13:31:19.014822657 +0530
+@@ -83,8 +83,8 @@
  POST_UNINSTALL = :
  build_triplet = @build@
  host_triplet = @host@
 -bin_PROGRAMS = $(am__EXEEXT_1) $(am__EXEEXT_2) $(am__EXEEXT_3) \
 -	$(am__EXEEXT_4)
-+bin_PROGRAMS = tools/btgatt-server$(EXTEXT) tools/hciattach$(EXEEXT) tools/hciconfig$(EXEEXT) tools/hcitool$(EXEEXT) tools/bdaddr$(EXTEXT)
++bin_PROGRAMS = tools/btgatt-server$(EXTEXT) tools/hciattach$(EXEEXT) tools/hciconfig$(EXEEXT) tools/hcitool$(EXEEXT) tools/bdaddr$(EXTEXT) tools/rfcomm$(EXTEXT) \
++               tools/sdptool$(EXTEXT) client/bluetoothctl$(EXTEXT) client/ltrx_beacon_scanner$(EXTEXT)
  noinst_PROGRAMS = $(am__EXEEXT_5) $(am__EXEEXT_6) $(am__EXEEXT_7) \
  	$(am__EXEEXT_8) $(am__EXEEXT_11)
  libexec_PROGRAMS = src/bluetoothd$(EXEEXT) obexd/src/obexd$(EXEEXT)
-@@ -397,7 +396,8 @@
+@@ -118,7 +118,7 @@
+ 
+ @SIXAXIS_TRUE@am__append_10 = plugins/sixaxis.la
+ @MAINTAINER_MODE_TRUE@am__append_11 = plugins/external-dummy.la
+-@CLIENT_TRUE@am__append_12 = client/bluetoothctl
++@CLIENT_TRUE@am__append_12 = client/bluetoothctl client/ltrx_beacon_scanner lib/libltrx-beacon.so
+ @MONITOR_TRUE@am__append_13 = monitor/btmon
+ @EXPERIMENTAL_TRUE@am__append_14 = emulator/btvirt emulator/b1ee \
+ @EXPERIMENTAL_TRUE@	emulator/hfp peripheral/btsensor tools/3dsp \
+@@ -397,7 +397,8 @@
  	src/shared/mainloop.lo
  src_libshared_mainloop_la_OBJECTS =  \
  	$(am_src_libshared_mainloop_la_OBJECTS)
 -@CLIENT_TRUE@am__EXEEXT_1 = client/bluetoothctl$(EXEEXT)
-+@CLIENT_TRUE@am__EXEEXT_1 = client/bluetoothctl$(EXEEXT) \
++@CLIENT_TRUE@am__EXEEXT_1 = client/bluetoothctl$(EXEEXT) client/ltrx_beacon_scanner$(EXTEXT) \
 +@EXPERIMENTAL_TRUE@    tools/btgatt-server$(EXTEXT)
  @MONITOR_TRUE@am__EXEEXT_2 = monitor/btmon$(EXEEXT)
  @TOOLS_TRUE@am__EXEEXT_3 = tools/hciattach$(EXEEXT) \
  @TOOLS_TRUE@	tools/hciconfig$(EXEEXT) tools/hcitool$(EXEEXT) \
-diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btgatt-server.c
---- bluez_utils-5.43/tools/btgatt-server.c	2017-07-11 18:21:39.057104099 +0530
-+++ bluez_utils-5.43_mod/tools/btgatt-server.c	2017-11-29 15:52:36.003124218 +0530
+@@ -690,13 +691,29 @@
+ 	client/display.c client/agent.h client/agent.c \
+ 	client/advertising.h client/advertising.c client/gatt.h \
+ 	client/gatt.c monitor/uuid.h monitor/uuid.c
++am__client_ltrx_beacon_scanner_SOURCES_DIST = client/ltrx_beacon_scanner.c client/display.h \
++	client/display.c client/agent.h client/agent.c \
++	client/advertising.h client/advertising.c client/gatt.h \
++	client/gatt.c monitor/uuid.h monitor/uuid.c
+ @CLIENT_TRUE@am_client_bluetoothctl_OBJECTS = client/main.$(OBJEXT) \
+ @CLIENT_TRUE@	client/display.$(OBJEXT) client/agent.$(OBJEXT) \
+ @CLIENT_TRUE@	client/advertising.$(OBJEXT) \
+ @CLIENT_TRUE@	client/gatt.$(OBJEXT) monitor/uuid.$(OBJEXT)
++@CLIENT_TRUE@am_client_ltrx_beacon_scanner_OBJECTS = client/ltrx_beacon_scanner.$(OBJEXT) \
++@CLIENT_TRUE@	client/display.$(OBJEXT) client/agent.$(OBJEXT) \
++@CLIENT_TRUE@	client/advertising.$(OBJEXT) \
++@CLIENT_TRUE@	client/gatt.$(OBJEXT) monitor/uuid.$(OBJEXT)
+ client_bluetoothctl_OBJECTS = $(am_client_bluetoothctl_OBJECTS)
++client_ltrx_beacon_scanner_OBJECTS = $(am_client_ltrx_beacon_scanner_OBJECTS)
+ @CLIENT_TRUE@client_bluetoothctl_DEPENDENCIES =  \
+ @CLIENT_TRUE@	gdbus/libgdbus-internal.la
++@CLIENT_TRUE@client_ltrx_beacon_scanner_DEPENDENCIES =  \
++@CLIENT_TRUE@	gdbus/libgdbus-internal.la
++@CLIENT_TRUE@tools_ltrx_beacon_lib_OBJECTS = client/display.$(OBJEXT) \
++@CLIENT_TRUE@	client/agent.$(OBJEXT) \
++@CLIENT_TRUE@	client/advertising.$(OBJEXT) \
++@CLIENT_TRUE@	client/gatt.$(OBJEXT) monitor/uuid.$(OBJEXT) \
++@CLIENT_TRUE@	gdbus/client.o gdbus/mainloop.o gdbus/object.o gdbus/polkit.o gdbus/watch.o
+ am__emulator_b1ee_SOURCES_DIST = emulator/b1ee.c
+ @EXPERIMENTAL_TRUE@am_emulator_b1ee_OBJECTS = emulator/b1ee.$(OBJEXT)
+ emulator_b1ee_OBJECTS = $(am_emulator_b1ee_OBJECTS)
+@@ -925,13 +942,13 @@
+ 	src/rfkill.c src/hcid.h src/sdpd.h src/sdpd-server.c \
+ 	src/sdpd-request.c src/sdpd-service.c src/sdpd-database.c \
+ 	src/attrib-server.h src/attrib-server.c src/gatt-database.h \
+-	src/gatt-database.c src/sdp-xml.h src/sdp-xml.c \
++	src/gatt_services.h src/ltrx_device_info_services.c src/ltrx_device_configuration_service.c src/gatt-database.c src/sdp-xml.h src/sdp-xml.c \
+ 	src/sdp-client.h src/sdp-client.c src/textfile.h \
+ 	src/textfile.c src/uuid-helper.h src/uuid-helper.c \
+ 	src/uinput.h src/plugin.h src/plugin.c src/storage.h \
+ 	src/storage.c src/advertising.h src/advertising.c src/agent.h \
+ 	src/agent.c src/error.h src/error.c src/adapter.h \
+-	src/adapter.c src/profile.h src/profile.c src/service.h \
++	src/ltrx_le_advertising.h src/ltrx_le_advertising.c src/adapter.c src/profile.h src/profile.c src/service.h \
+ 	src/service.c src/gatt-client.h src/gatt-client.c src/device.h \
+ 	src/device.c src/dbus-common.c src/dbus-common.h src/eir.h \
+ 	src/eir.c
+@@ -994,6 +1011,8 @@
+ 	src/bluetoothd-sdpd-service.$(OBJEXT) \
+ 	src/bluetoothd-sdpd-database.$(OBJEXT) \
+ 	src/bluetoothd-attrib-server.$(OBJEXT) \
++	src/bluetoothd-ltrx_device_info_service.$(OBJEXT) \
++        src/bluetoothd-ltrx_device_configuration_service.$(OBJEXT) \
+ 	src/bluetoothd-gatt-database.$(OBJEXT) \
+ 	src/bluetoothd-sdp-xml.$(OBJEXT) \
+ 	src/bluetoothd-sdp-client.$(OBJEXT) \
+@@ -1003,6 +1022,7 @@
+ 	src/bluetoothd-storage.$(OBJEXT) \
+ 	src/bluetoothd-advertising.$(OBJEXT) \
+ 	src/bluetoothd-agent.$(OBJEXT) src/bluetoothd-error.$(OBJEXT) \
++	src/bluetoothd-ltrx_le_advertising.$(OBJEXT) \
+ 	src/bluetoothd-adapter.$(OBJEXT) \
+ 	src/bluetoothd-profile.$(OBJEXT) \
+ 	src/bluetoothd-service.$(OBJEXT) \
+@@ -1612,7 +1632,7 @@
+ 	$(android_bluetoothd_snoop_SOURCES) $(android_haltest_SOURCES) \
+ 	$(android_ipc_tester_SOURCES) \
+ 	$(android_system_emulator_SOURCES) $(android_test_ipc_SOURCES) \
+-	$(attrib_gatttool_SOURCES) $(client_bluetoothctl_SOURCES) \
++	$(attrib_gatttool_SOURCES) $(client_bluetoothctl_SOURCES) $(client_ltrx_beacon_scanner_SOURCES) \
+ 	$(emulator_b1ee_SOURCES) $(emulator_btvirt_SOURCES) \
+ 	$(emulator_hfp_SOURCES) $(monitor_btmon_SOURCES) \
+ 	$(obexd_src_obexd_SOURCES) $(nodist_obexd_src_obexd_SOURCES) \
+@@ -1681,6 +1701,7 @@
+ 	$(am__android_test_ipc_SOURCES_DIST) \
+ 	$(am__attrib_gatttool_SOURCES_DIST) \
+ 	$(am__client_bluetoothctl_SOURCES_DIST) \
++	$(am__client_ltrx_beacon_scanner_SOURCES_DIST) \
+ 	$(am__emulator_b1ee_SOURCES_DIST) \
+ 	$(am__emulator_btvirt_SOURCES_DIST) \
+ 	$(am__emulator_hfp_SOURCES_DIST) \
+@@ -2126,7 +2147,7 @@
+ top_builddir = @top_builddir@
+ top_srcdir = @top_srcdir@
+ AM_MAKEFLAGS = --no-print-directory
+-lib_LTLIBRARIES = $(am__append_2)
++lib_LTLIBRARIES = $(am__append_2) lib/libltrx-beacon.so
+ noinst_LIBRARIES = $(am__append_7)
+ noinst_LTLIBRARIES = lib/libbluetooth-internal.la \
+ 	gdbus/libgdbus-internal.la src/libshared-glib.la \
+@@ -2336,7 +2357,7 @@
+ 			src/sdpd-server.c src/sdpd-request.c \
+ 			src/sdpd-service.c src/sdpd-database.c \
+ 			src/attrib-server.h src/attrib-server.c \
+-			src/gatt-database.h src/gatt-database.c \
++			src/gatt-database.h src/gatt_services.h src/ltrx_device_info_services.c src/ltrx_device_configuration_service.c src/gatt-database.c \
+ 			src/sdp-xml.h src/sdp-xml.c \
+ 			src/sdp-client.h src/sdp-client.c \
+ 			src/textfile.h src/textfile.c \
+@@ -2347,7 +2368,7 @@
+ 			src/advertising.h src/advertising.c \
+ 			src/agent.h src/agent.c \
+ 			src/error.h src/error.c \
+-			src/adapter.h src/adapter.c \
++			src/adapter.h src/ltrx_le_advertising.h src/ltrx_le_advertising.c src/adapter.c \
+ 			src/profile.h src/profile.c \
+ 			src/service.h src/service.c \
+ 			src/gatt-client.h src/gatt-client.c \
+@@ -2408,6 +2429,17 @@
+ @CLIENT_TRUE@client_bluetoothctl_LDADD = gdbus/libgdbus-internal.la @GLIB_LIBS@ @DBUS_LIBS@ \
+ @CLIENT_TRUE@				-lreadline
+ 
++@CLIENT_TRUE@client_ltrx_beacon_scanner_SOURCES = client/ltrx_beacon_scanner.c \
++@CLIENT_TRUE@					client/display.h client/display.c \
++@CLIENT_TRUE@					client/agent.h client/agent.c \
++@CLIENT_TRUE@					client/advertising.h \
++@CLIENT_TRUE@					client/advertising.c \
++@CLIENT_TRUE@					client/gatt.h client/gatt.c \
++@CLIENT_TRUE@					monitor/uuid.h monitor/uuid.c
++
++@CLIENT_TRUE@client_ltrx_beacon_scanner_LDADD = gdbus/libgdbus-internal.la @GLIB_LIBS@ @DBUS_LIBS@ \
++@CLIENT_TRUE@				-lreadline
++
+ @MONITOR_TRUE@monitor_btmon_SOURCES = monitor/main.c monitor/bt.h \
+ @MONITOR_TRUE@				monitor/display.h monitor/display.c \
+ @MONITOR_TRUE@				monitor/hcidump.h monitor/hcidump.c \
+@@ -3961,6 +3993,15 @@
+ client/bluetoothctl$(EXEEXT): $(client_bluetoothctl_OBJECTS) $(client_bluetoothctl_DEPENDENCIES) $(EXTRA_client_bluetoothctl_DEPENDENCIES) client/$(am__dirstamp)
+ 	@rm -f client/bluetoothctl$(EXEEXT)
+ 	$(AM_V_CCLD)$(LINK) $(client_bluetoothctl_OBJECTS) $(client_bluetoothctl_LDADD) $(LIBS)
++
++client/ltrx_beacon_scanner$(EXEEXT): $(client_ltrx_beacon_scanner_OBJECTS) $(client_ltrx_beacon_scanner_DEPENDENCIES) $(EXTRA_client_ltrx_beacon_scanner_DEPENDENCIES) client/$(am__dirstamp)
++	@rm -f client/ltrx_beacon_scanner$(EXEEXT)
++	$(AM_V_CCLD)$(LINK) $(client_ltrx_beacon_scanner_OBJECTS) $(client_ltrx_beacon_scanner_LDADD) $(LIBS)
++
++lib/libltrx-beacon.so: $(tools_ltrx_beacon_lib_OBJECTS) client/bluetoothctl$(EXEEXT)
++	@rm -f lib/libltrx-beacon.so
++	$(CCLD) -shared -o lib/libltrx-beacon.so $(tools_ltrx_beacon_lib_OBJECTS) -lglib-2.0 -ldbus-1 -lreadline
++
+ emulator/b1ee.$(OBJEXT): emulator/$(am__dirstamp) \
+ 	emulator/$(DEPDIR)/$(am__dirstamp)
+ 
+@@ -4368,6 +4409,10 @@
+ 	src/$(DEPDIR)/$(am__dirstamp)
+ src/bluetoothd-attrib-server.$(OBJEXT): src/$(am__dirstamp) \
+ 	src/$(DEPDIR)/$(am__dirstamp)
++src/bluetoothd-ltrx_device_info_service.$(OBJEXT): src/$(am__dirstamp) \
++	src/$(DEPDIR)/$(am__dirstamp)
++src/bluetoothd-ltrx_device_configuration_service.$(OBJEXT): src/$(am__dirstamp) \
++	src/$(DEPDIR)/$(am__dirstamp)
+ src/bluetoothd-gatt-database.$(OBJEXT): src/$(am__dirstamp) \
+ 	src/$(DEPDIR)/$(am__dirstamp)
+ src/bluetoothd-sdp-xml.$(OBJEXT): src/$(am__dirstamp) \
+@@ -4388,6 +4433,8 @@
+ 	src/$(DEPDIR)/$(am__dirstamp)
+ src/bluetoothd-error.$(OBJEXT): src/$(am__dirstamp) \
+ 	src/$(DEPDIR)/$(am__dirstamp)
++src/bluetoothd-ltrx_le_advertising.$(OBJEXT): src/$(am__dirstamp) \
++	src/$(DEPDIR)/$(am__dirstamp)
+ src/bluetoothd-adapter.$(OBJEXT): src/$(am__dirstamp) \
+ 	src/$(DEPDIR)/$(am__dirstamp)
+ src/bluetoothd-profile.$(OBJEXT): src/$(am__dirstamp) \
+@@ -4405,7 +4452,7 @@
+ 
+ src/bluetoothd$(EXEEXT): $(src_bluetoothd_OBJECTS) $(src_bluetoothd_DEPENDENCIES) $(EXTRA_src_bluetoothd_DEPENDENCIES) src/$(am__dirstamp)
+ 	@rm -f src/bluetoothd$(EXEEXT)
+-	$(AM_V_CCLD)$(src_bluetoothd_LINK) $(src_bluetoothd_OBJECTS) $(src_bluetoothd_LDADD) $(LIBS)
++	$(AM_V_CCLD)$(src_bluetoothd_LINK) $(src_bluetoothd_OBJECTS) $(src_bluetoothd_LDADD) $(LIBS) -lpthread
+ tools/$(am__dirstamp):
+ 	@$(MKDIR_P) tools
+ 	@: > tools/$(am__dirstamp)
+@@ -4506,7 +4553,7 @@
+ 
+ tools/btgatt-server$(EXEEXT): $(tools_btgatt_server_OBJECTS) $(tools_btgatt_server_DEPENDENCIES) $(EXTRA_tools_btgatt_server_DEPENDENCIES) tools/$(am__dirstamp)
+ 	@rm -f tools/btgatt-server$(EXEEXT)
+-	$(AM_V_CCLD)$(LINK) $(tools_btgatt_server_OBJECTS) $(tools_btgatt_server_LDADD) $(LIBS)
++	$(AM_V_CCLD)$(LINK) $(tools_btgatt_server_OBJECTS) $(tools_btgatt_server_LDADD) $(LIBS) -lpthread
+ tools/btinfo.$(OBJEXT): tools/$(am__dirstamp) \
+ 	tools/$(DEPDIR)/$(am__dirstamp)
+ 
+@@ -5352,6 +5399,7 @@
+ @AMDEP_TRUE@@am__include@ @am__quote@profiles/scanparam/$(DEPDIR)/bluetoothd-scpp.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@profiles/scanparam/$(DEPDIR)/scpp.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/android_avdtptest-log.Po@am__quote@
++@AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-ltrx_le_advertising.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-adapter.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-advertising.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-agent.Po@am__quote@
+@@ -5362,6 +5410,8 @@
+ @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-eir.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-error.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-gatt-client.Po@am__quote@
++@AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-ltrx_device_info_service.Po@am__quote@
++@AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-ltrx_device_configuration_service.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-gatt-database.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-log.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/bluetoothd-main.Po@am__quote@
+@@ -7761,8 +7811,22 @@
+ @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+ @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(src_bluetoothd_CFLAGS) $(CFLAGS) -c -o src/bluetoothd-attrib-server.obj `if test -f 'src/attrib-server.c'; then $(CYGPATH_W) 'src/attrib-server.c'; else $(CYGPATH_W) '$(srcdir)/src/attrib-server.c'; fi`
+ 
++src/bluetoothd-ltrx_device_info_service.o: src/ltrx_device_info_service.c
++@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(src_bluetoothd_CFLAGS) $(CFLAGS) -MT src/bluetoothd-ltrx_device_info_service.o -MD -MP -MF src/$(DEPDIR)/bluetoothd-ltrx_device_info_service.Tpo -c -o src/bluetoothd-ltrx_device_info_service.o `test -f 'src/ltrx_device_info_service.c' || echo '$(srcdir)/'`src/ltrx_device_info_service.c
++@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/$(DEPDIR)/bluetoothd-ltrx_device_info_service.Tpo src/$(DEPDIR)/bluetoothd-ltrx_device_info_service.Po
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/gatt-database.c' object='src/bluetoothd-gatt-database.o' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(src_bluetoothd_CFLAGS) $(CFLAGS) -c -o src/bluetoothd-gatt-database.o `test -f 'src/gatt-database.c' || echo '$(srcdir)/'`src/gatt-database.c
++
++src/bluetoothd-ltrx_device_configuration_service.o: src/ltrx_device_configuration_service.c
++@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(src_bluetoothd_CFLAGS) $(CFLAGS) -MT src/bluetoothd-ltrx_device_configuration_service.o -MD -MP -MF src/$(DEPDIR)/bluetoothd-ltrx_device_configuration_service.Tpo -c -o src/bluetoothd-ltrx_device_configuration_service.o `test -f 'src/ltrx_device_configuration_service.c' || echo '$(srcdir)/'`src/ltrx_device_configuration_service.c
++@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/$(DEPDIR)/bluetoothd-ltrx_device_configuration_service.Tpo src/$(DEPDIR)/bluetoothd-ltrx_device_configuration_service.Po
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/gatt-database.c' object='src/bluetoothd-gatt-database.o' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@   $(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(src_bluetoothd_CFLAGS) $(CFLAGS) -c -o src/bluetoothd-gatt-database.o `test -f 'src/gatt-database.c' || echo '$(srcdir)/'`src/gatt-database.c
++
+ src/bluetoothd-gatt-database.o: src/gatt-database.c
+-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(src_bluetoothd_CFLAGS) $(CFLAGS) -MT src/bluetoothd-gatt-database.o -MD -MP -MF src/$(DEPDIR)/bluetoothd-gatt-database.Tpo -c -o src/bluetoothd-gatt-database.o `test -f 'src/gatt-database.c' || echo '$(srcdir)/'`src/gatt-database.c
++@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(src_bluetoothd_CFLAGS) $(CFLAGS) src/bluetoothd-ltrx_device_configuration_service.o src/bluetoothd-ltrx_device_info_service.o -MT src/bluetoothd-gatt-database.o src/bluetoothd-ltrx_device_configuration_service.o src/bluetoothd-ltrx_device_info_service.o -MD -MP -MF src/$(DEPDIR)/bluetoothd-gatt-database.Tpo -c -o src/bluetoothd-gatt-database.o `test -f 'src/gatt-database.c' || echo '$(srcdir)/'`src/gatt-database.c
+ @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/$(DEPDIR)/bluetoothd-gatt-database.Tpo src/$(DEPDIR)/bluetoothd-gatt-database.Po
+ @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/gatt-database.c' object='src/bluetoothd-gatt-database.o' libtool=no @AMDEPBACKSLASH@
+ @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@@ -7901,6 +7965,13 @@
+ @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+ @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(src_bluetoothd_CFLAGS) $(CFLAGS) -c -o src/bluetoothd-error.obj `if test -f 'src/error.c'; then $(CYGPATH_W) 'src/error.c'; else $(CYGPATH_W) '$(srcdir)/src/error.c'; fi`
+ 
++src/bluetoothd-ltrx_le_advertising.o: src/ltrx_le_advertising.c
++@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(src_bluetoothd_CFLAGS) $(CFLAGS) -MT src/bluetoothd-ltrx_le_advertising.o -MD -MP -MF src/$(DEPDIR)/bluetoothd-ltrx_le_advertising.Tpo -c -o src/bluetoothd-ltrx_le_advertising.o `test -f 'src/ltrx_le_advertising.c' || echo '$(srcdir)/'`src/ltrx_le_advertising.c
++@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/$(DEPDIR)/bluetoothd-ltrx_le_advertising.Tpo src/$(DEPDIR)/bluetoothd-ltrx_le_advertising.Po
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/ltrx_le_advertising.c' object='src/bluetoothd-ltrx_le_advertising.o' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@   $(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(src_bluetoothd_CFLAGS) $(CFLAGS) -c -o src/bluetoothd-ltrx_le_advertising.o `test -f 'src/ltrx_le_advertising.c' || echo '$(srcdir)/'`src/ltrx_le_advertising.c
++
+ src/bluetoothd-adapter.o: src/adapter.c
+ @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(src_bluetoothd_CFLAGS) $(CFLAGS) -MT src/bluetoothd-adapter.o -MD -MP -MF src/$(DEPDIR)/bluetoothd-adapter.Tpo -c -o src/bluetoothd-adapter.o `test -f 'src/adapter.c' || echo '$(srcdir)/'`src/adapter.c
+ @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/$(DEPDIR)/bluetoothd-adapter.Tpo src/$(DEPDIR)/bluetoothd-adapter.Po
+diff -ruN --new-file bluez_utils-5.43/src/adapter.c bluez_utils-5.43_mod_2/src/adapter.c
+--- bluez_utils-5.43/src/adapter.c	2017-06-14 18:25:33.847679804 +0530
++++ bluez_utils-5.43_mod_2/src/adapter.c	2019-05-30 21:48:08.917491616 +0530
+@@ -58,6 +58,7 @@
+ #include "src/shared/queue.h"
+ #include "src/shared/att.h"
+ #include "src/shared/gatt-db.h"
++#include "src/ltrx_le_advertising_api.h"
+ 
+ #include "hcid.h"
+ #include "sdpd.h"
+@@ -485,7 +486,7 @@
+ 	DBG("Changed settings: 0x%08x", changed_mask);
+ 
+ 	if (changed_mask & MGMT_SETTING_POWERED) {
+-	        g_dbus_emit_property_changed(dbus_conn, adapter->path,
++		g_dbus_emit_property_changed(dbus_conn, adapter->path,
+ 					ADAPTER_INTERFACE, "Powered");
+ 
+ 		if (adapter->current_settings & MGMT_SETTING_POWERED) {
+@@ -1192,7 +1193,15 @@
+ 	device = btd_adapter_find_device(adapter, addr, addr_type);
+ 	if (device)
+ 		return device;
++	
++	device = btd_adapter_find_device(adapter, addr,  BDADDR_LE_PUBLIC);
++	if (device)
++		return device;
+ 
++	device = btd_adapter_find_device(adapter, addr, BDADDR_BREDR);
++	if (device)
++		return device;
++	
+ 	return adapter_create_device(adapter, addr, addr_type);
+ }
+ 
+@@ -1449,7 +1458,7 @@
+ 	adapter->no_scan_restart_delay = !!adapter->current_discovery_filter;
+ 
+ 	DBG("adapter->current_discovery_filter == %d",
+-	    !!adapter->current_discovery_filter);
++		!!adapter->current_discovery_filter);
+ 
+ 	new_type = get_scan_type(adapter);
+ 
+@@ -1462,8 +1471,8 @@
+ 		 * then just keep it.
+ 		 */
+ 		if (!adapter->current_discovery_filter &&
+-		    !adapter->filtered_discovery &&
+-		    adapter->discovery_type == new_type) {
++			!adapter->filtered_discovery &&
++			adapter->discovery_type == new_type) {
+ 			if (adapter->discovering)
+ 				return FALSE;
+ 
+@@ -1850,7 +1859,7 @@
+  * otherwise it's pointing to filter. Returns 0 on succes, -1 on error
+  */
+ static int discovery_filter_to_mgmt_cp(struct btd_adapter *adapter,
+-		       struct mgmt_cp_start_service_discovery **cp_ptr)
++			   struct mgmt_cp_start_service_discovery **cp_ptr)
+ {
+ 	GSList *uuids = NULL;
+ 	struct mgmt_cp_start_service_discovery *cp;
+@@ -1929,7 +1938,7 @@
+ 	 * starting discovery.
+ 	 */
+ 	if (filters_equal(adapter->current_discovery_filter, sd_cp) &&
+-	    adapter->discovering != 0) {
++		adapter->discovering != 0) {
+ 		DBG("filters were equal, deciding to not restart the scan.");
+ 		g_free(sd_cp);
+ 		return;
+@@ -2087,9 +2096,9 @@
+ 	 */
+ 	if (client) {
+ 		adapter->set_filter_list = g_slist_remove(
+-					     adapter->set_filter_list, client);
++						 adapter->set_filter_list, client);
+ 		adapter->discovery_list = g_slist_prepend(
+-					      adapter->discovery_list, client);
++						  adapter->discovery_list, client);
+ 		update_discovery_filter(adapter);
+ 		return dbus_message_new_method_return(msg);
+ 	}
+@@ -2236,7 +2245,7 @@
+ 
+ 	dbus_message_iter_init(msg, &iter);
+ 	if (dbus_message_iter_get_arg_type(&iter) != DBUS_TYPE_ARRAY ||
+-	    dbus_message_iter_get_element_type(&iter) != DBUS_TYPE_DICT_ENTRY)
++		dbus_message_iter_get_element_type(&iter) != DBUS_TYPE_DICT_ENTRY)
+ 		goto invalid_args;
+ 
+ 	dbus_message_iter_recurse(&iter, &subiter);
+@@ -2255,7 +2264,7 @@
+ 			goto invalid_args;
+ 
+ 		if (dbus_message_iter_get_arg_type(&dictiter) !=
+-							     DBUS_TYPE_VARIANT)
++								 DBUS_TYPE_VARIANT)
+ 			goto invalid_args;
+ 
+ 		dbus_message_iter_recurse(&dictiter, &variantiter);
+@@ -2274,11 +2283,11 @@
+ 
+ 	/* only pathlos or rssi can be set, never both */
+ 	if ((*filter)->pathloss != DISTANCE_VAL_INVALID &&
+-	    (*filter)->rssi != DISTANCE_VAL_INVALID)
++		(*filter)->rssi != DISTANCE_VAL_INVALID)
+ 		goto invalid_args;
+ 
+ 	DBG("filtered discovery params: transport: %d rssi: %d pathloss: %d",
+-	    (*filter)->type, (*filter)->rssi, (*filter)->pathloss);
++		(*filter)->type, (*filter)->rssi, (*filter)->pathloss);
+ 
+ 	return true;
+ 
+@@ -2304,7 +2313,7 @@
+ 		return btd_error_not_ready(msg);
+ 
+ 	if (MGMT_VERSION(mgmt_version, mgmt_revision) < MGMT_VERSION(1, 8))
+-		return btd_error_not_supported(msg);
++		//return btd_error_not_supported(msg);
+ 
+ 	/* parse parameters */
+ 	if (!parse_discovery_filter_dict(adapter, &discovery_filter, msg))
+@@ -2324,8 +2333,8 @@
+ 
+ 		/* Removing pre-set filter */
+ 		adapter->set_filter_list = g_slist_remove(
+-					      adapter->set_filter_list,
+-					      client);
++						  adapter->set_filter_list,
++						  client);
+ 		g_free(client->owner);
+ 		g_free(client);
+ 		DBG("successfully cleared pre-set filter");
+@@ -2339,7 +2348,7 @@
+ 						discovery_disconnect, client,
+ 						discovery_destroy);
+ 		adapter->set_filter_list = g_slist_prepend(
+-					     adapter->set_filter_list, client);
++						 adapter->set_filter_list, client);
+ 
+ 		DBG("successfully pre-set filter");
+ 	}
+@@ -5541,10 +5550,10 @@
+ 		if (got_match) {
+ 			/* we have service match, check proximity */
+ 			if (item->rssi == DISTANCE_VAL_INVALID ||
+-			    item->rssi <= rssi ||
+-			    item->pathloss == DISTANCE_VAL_INVALID ||
+-			    (eir_data->tx_power != 127 &&
+-			     eir_data->tx_power - rssi <= item->pathloss))
++				item->rssi <= rssi ||
++				item->pathloss == DISTANCE_VAL_INVALID ||
++				(eir_data->tx_power != 127 &&
++				 eir_data->tx_power - rssi <= item->pathloss))
+ 				return true;
+ 
+ 			got_match = false;
+@@ -5568,15 +5577,24 @@
+ 
+ 	memset(&eir_data, 0, sizeof(eir_data));
+ 	eir_parse(&eir_data, data, data_len);
+-
+ 	if (bdaddr_type == BDADDR_BREDR || adapter->filtered_discovery)
+ 		discoverable = true;
+ 	else
+ 		discoverable = eir_data.flags & (EIR_LIM_DISC | EIR_GEN_DISC);
+-
++        discoverable = true;
+ 	ba2str(bdaddr, addr);
+ 
+ 	dev = btd_adapter_find_device(adapter, bdaddr, bdaddr_type);
++        if (!dev)
++        {
++            bdaddr_type = BDADDR_LE_PUBLIC; 
++            dev = btd_adapter_find_device(adapter, bdaddr, bdaddr_type);
++        }
++        if (!dev)
++        {
++            bdaddr_type = BDADDR_LE_RANDOM;
++            dev = btd_adapter_find_device(adapter, bdaddr, bdaddr_type);
++        }
+ 	if (!dev) {
+ 		/*
+ 		 * If no client has requested discovery or the device is
+@@ -5626,7 +5644,7 @@
+ 	}
+ 
+ 	if (adapter->filtered_discovery &&
+-	    !is_filter_match(adapter->discovery_list, &eir_data, rssi)) {
++		!is_filter_match(adapter->discovery_list, &eir_data, rssi)) {
+ 		eir_data_free(&eir_data);
+ 		return;
+ 	}
+@@ -6768,7 +6786,6 @@
+ 		disconnect_cb(dev, reason);
+ 	}
+ }
+-
+ static void dev_disconnected(struct btd_adapter *adapter,
+ 					const struct mgmt_addr_info *addr,
+ 					uint8_t reason)
+@@ -6778,7 +6795,7 @@
+ 
+ 	ba2str(&addr->bdaddr, dst);
+ 
+-	DBG("Device %s disconnected, reason %u", dst, reason);
++	info("Device %s disconnected, reason %u", dst, reason);
+ 
+ 	device = btd_adapter_find_device(adapter, &addr->bdaddr, addr->type);
+ 	if (device) {
+@@ -6788,6 +6805,7 @@
+ 
+ 	bonding_attempt_complete(adapter, &addr->bdaddr, addr->type,
+ 						MGMT_STATUS_DISCONNECTED);
++		advertise();
+ }
+ 
+ void btd_add_disconnect_cb(btd_disconnect_cb func)
+@@ -7687,7 +7705,7 @@
+ 
+ 	ba2str(&ev->addr.bdaddr, addr);
+ 
+-	DBG("hci%u device %s connected eir_len %u", index, addr, eir_len);
++	info("hci%u device %s connected eir_len %u", index, addr, eir_len);
+ 
+ 	device = btd_adapter_get_device(adapter, &ev->addr.bdaddr,
+ 								ev->addr.type);
+diff -ruN --new-file bluez_utils-5.43/src/device.c bluez_utils-5.43_mod_2/src/device.c
+--- bluez_utils-5.43/src/device.c	2017-06-14 18:25:33.847679804 +0530
++++ bluez_utils-5.43_mod_2/src/device.c	2019-05-08 14:12:46.041489084 +0530
+@@ -53,6 +53,7 @@
+ #include "src/shared/gatt-client.h"
+ #include "src/shared/gatt-server.h"
+ #include "src/shared/ad.h"
++#include "src/ltrx_le_advertising_api.h"
+ #include "btio/btio.h"
+ #include "lib/mgmt.h"
+ #include "attrib/att.h"
+@@ -4568,7 +4569,6 @@
+ 
+ 	btd_service_disconnect(service);
+ }
+-
+ static void att_disconnected_cb(int err, void *user_data)
+ {
+ 	struct btd_device *device = user_data;
+@@ -4599,6 +4599,8 @@
+ 
+ done:
+ 	attio_cleanup(device);
++        info("BLE central Disconnected\n");
++        advertise(); 
+ }
+ 
+ static void register_gatt_services(struct btd_device *device)
+diff -ruN --new-file bluez_utils-5.43/src/gatt-database.c bluez_utils-5.43_mod_2/src/gatt-database.c
+--- bluez_utils-5.43/src/gatt-database.c	2017-06-14 18:25:33.847679804 +0530
++++ bluez_utils-5.43_mod_2/src/gatt-database.c	2019-05-08 17:30:02.414314633 +0530
+@@ -24,26 +24,7 @@
+ #include <stdint.h>
+ #include <stdlib.h>
+ #include <errno.h>
+-
+-#include "lib/bluetooth.h"
+-#include "lib/sdp.h"
+-#include "lib/sdp_lib.h"
+-#include "lib/uuid.h"
+-#include "btio/btio.h"
+-#include "gdbus/gdbus.h"
+-#include "src/shared/util.h"
+-#include "src/shared/queue.h"
+-#include "src/shared/att.h"
+-#include "src/shared/gatt-db.h"
+-#include "src/shared/gatt-server.h"
+-#include "log.h"
+-#include "error.h"
+-#include "adapter.h"
+-#include "device.h"
+-#include "gatt-database.h"
+-#include "dbus-common.h"
+-#include "profile.h"
+-#include "service.h"
++#include "src/gatt_services.h"
+ 
+ #ifndef ATT_CID
+ #define ATT_CID 4
+@@ -62,26 +43,10 @@
+ #define UUID_GAP	0x1800
+ #define UUID_GATT	0x1801
+ 
++
+ #ifndef MIN
+ #define MIN(a, b) ((a) < (b) ? (a) : (b))
+ #endif
+-
+-struct btd_gatt_database {
+-	struct btd_adapter *adapter;
+-	struct gatt_db *db;
+-	unsigned int db_id;
+-	GIOChannel *le_io;
+-	GIOChannel *l2cap_io;
+-	uint32_t gap_handle;
+-	uint32_t gatt_handle;
+-	struct queue *device_states;
+-	struct queue *ccc_callbacks;
+-	struct gatt_db_attribute *svc_chngd;
+-	struct gatt_db_attribute *svc_chngd_ccc;
+-	struct queue *apps;
+-	struct queue *profiles;
+-};
+-
+ struct gatt_app {
+ 	struct btd_gatt_database *database;
+ 	char *owner;
+@@ -467,11 +432,15 @@
+ 
+ static void connect_cb(GIOChannel *io, GError *gerr, gpointer user_data)
+ {
++	struct btd_gatt_database *database = user_data;
+ 	struct btd_adapter *adapter;
+ 	struct btd_device *device;
+ 	uint8_t dst_type;
++	struct bt_gatt_server *server;
+ 	bdaddr_t src, dst;
+-
++	char bdaddress[20];
++	
++	system("hciconfig hci0 noscan");
+ 	if (gerr) {
+ 		error("%s", gerr->message);
+ 		return;
+@@ -486,7 +455,8 @@
+ 		g_error_free(gerr);
+ 		return;
+ 	}
+-
++	
++	dst_type = BDADDR_LE_RANDOM;
+ 	DBG("New incoming %s ATT connection", dst_type == BDADDR_BREDR ?
+ 							"BR/EDR" : "LE");
+ 
+@@ -495,10 +465,15 @@
+ 		return;
+ 
+ 	device = btd_adapter_get_device(adapter, &dst, dst_type);
++	database->device = device;
++	
+ 	if (!device)
+ 		return;
+ 
+ 	device_attach_att(device, io);
++
++	ba2str(&dst, bdaddress);
++	info("BLE connected to %s\n", bdaddress);
+ }
+ 
+ static void gap_device_name_read_cb(struct gatt_db_attribute *attrib,
+@@ -655,7 +630,7 @@
+ 
+ 	/* Add the GAP service */
+ 	bt_uuid16_create(&uuid, UUID_GAP);
+-	service = gatt_db_add_service(database->db, &uuid, true, 5);
++	service = gatt_db_add_service(database->db, &uuid, true, GATT_GAP_SERVICE_DEF_LEN);
+ 	database->gap_handle = database_add_record(database, UUID_GAP, service,
+ 						"Generic Access Profile");
+ 
+@@ -853,11 +828,13 @@
+ 
+ 	gatt_db_service_set_active(service, true);
+ }
+-
+ static void register_core_services(struct btd_gatt_database *database)
+ {
+ 	populate_gap_service(database);
+ 	populate_gatt_service(database);
++	/* new services added */
++	populate_device_info_service(database);
++	populate_device_config_service(database);
+ }
+ 
+ struct notify {
+@@ -2607,12 +2584,13 @@
+ 		goto fail;
+ 
+ 	addr = btd_adapter_get_address(adapter);
+-	database->le_io = bt_io_listen(connect_cb, NULL, NULL, NULL, &gerr,
+-					BT_IO_OPT_SOURCE_BDADDR, addr,
+-					BT_IO_OPT_SOURCE_TYPE, BDADDR_LE_PUBLIC,
+-					BT_IO_OPT_CID, ATT_CID,
+-					BT_IO_OPT_SEC_LEVEL, BT_IO_SEC_LOW,
+-					BT_IO_OPT_INVALID);
++	database->le_io = bt_io_listen(connect_cb, NULL, database, NULL, &gerr,
++									BT_IO_OPT_SOURCE_BDADDR, addr,
++									BT_IO_OPT_SOURCE_TYPE, BDADDR_LE_PUBLIC,
++									BT_IO_OPT_CID, ATT_CID,
++									BT_IO_OPT_SEC_LEVEL, BT_IO_SEC_LOW,
++									BT_IO_OPT_INVALID);
++
+ 	if (!database->le_io) {
+ 		error("Failed to start listening: %s", gerr->message);
+ 		g_error_free(gerr);
+@@ -2621,10 +2599,11 @@
+ 
+ 	/* BR/EDR socket */
+ 	database->l2cap_io = bt_io_listen(connect_cb, NULL, NULL, NULL, &gerr,
+-					BT_IO_OPT_SOURCE_BDADDR, addr,
+-					BT_IO_OPT_PSM, ATT_PSM,
+-					BT_IO_OPT_SEC_LEVEL, BT_IO_SEC_LOW,
+-					BT_IO_OPT_INVALID);
++									  BT_IO_OPT_SOURCE_BDADDR, addr,
++									  BT_IO_OPT_PSM, ATT_PSM,
++									  BT_IO_OPT_SEC_LEVEL, BT_IO_SEC_LOW,
++									  BT_IO_OPT_INVALID);
++
+ 	if (database->l2cap_io == NULL) {
+ 		error("Failed to start listening: %s", gerr->message);
+ 		g_error_free(gerr);
+diff -ruN --new-file bluez_utils-5.43/src/gatt_services.h bluez_utils-5.43_mod_2/src/gatt_services.h
+--- bluez_utils-5.43/src/gatt_services.h	1970-01-01 05:30:00.000000000 +0530
++++ bluez_utils-5.43_mod_2/src/gatt_services.h	2019-05-08 17:30:18.526483211 +0530
+@@ -0,0 +1,62 @@
++#include "lib/bluetooth.h"
++#include "lib/sdp.h"
++#include "lib/sdp_lib.h"
++#include "lib/uuid.h"
++#include "btio/btio.h"
++#include "gdbus/gdbus.h"
++#include "src/shared/util.h"
++#include "src/shared/queue.h"
++#include "src/shared/att.h"
++#include "src/shared/gatt-db.h"
++#include "src/shared/gatt-server.h"
++#include "log.h"
++#include "error.h"
++#include "adapter.h"
++#include "device.h"
++#include "gatt-database.h"
++#include "dbus-common.h"
++#include "profile.h"
++#include "service.h"
++
++#define COLOR_BLUE      "\x1B[0;94m"
++#define COLOR_OFF       "\x1B[0m"
++
++#define GATT_GAP_SERVICE_DEF_LEN   6
++
++
++static void print_prompt(void)
++{
++	printf(COLOR_BLUE "[GATT client]" COLOR_OFF "# ");
++	fflush(stdout);
++}
++#define PRLOG(...) \
++		printf(__VA_ARGS__); print_prompt();
++
++
++struct btd_gatt_database {
++	struct btd_adapter *adapter;
++	struct btd_device *device;
++	struct gatt_db *db;
++	unsigned int db_id;
++	GIOChannel *le_io;
++	GIOChannel *l2cap_io;
++	uint32_t gap_handle;
++	uint32_t gatt_handle;
++	struct queue *device_states;
++	struct queue *ccc_callbacks;
++	struct gatt_db_attribute *svc_chngd;
++	struct gatt_db_attribute *svc_chngd_ccc;
++	struct queue *apps;
++	struct queue *profiles;
++	uint16_t device_config_status_notify_handle;
++	uint16_t device_config_status_notify_ccc_handle;
++	uint8_t device_config_status_notify_enabled;
++	uint8_t device_config_status;
++	uint8_t *device_config_xml_data;
++	uint32_t device_config_xml_data_length;
++	uint32_t device_config_checksum_value;
++};
++
++
++void populate_device_info_service(struct btd_gatt_database *database);
++void populate_device_config_service(struct btd_gatt_database *database); 
+diff -ruN --new-file bluez_utils-5.43/src/log.h bluez_utils-5.43_mod_2/src/log.h
+--- bluez_utils-5.43/src/log.h	2017-06-14 18:25:33.847679804 +0530
++++ bluez_utils-5.43_mod_2/src/log.h	2019-05-08 14:35:22.850821813 +0530
+@@ -23,10 +23,22 @@
+ 
+ #include <stdint.h>
+ 
++#define DBG_EN
++
+ void error(const char *format, ...) __attribute__((format(printf, 1, 2)));
+ void warn(const char *format, ...) __attribute__((format(printf, 1, 2)));
+ void info(const char *format, ...) __attribute__((format(printf, 1, 2)));
+ 
++#ifdef DBG_EN
++#define DBG_ERR(fmt, args...)  error(fmt, ##args)
++#define DBG_WARN(fmt, args...) warn(fmt, ##args)
++#define DBG_INFO(fmt, args...) info(fmt, ##args)
++#else
++#define DBG_ERR(fmt, args...)
++#define DBG_WARN(fmt, args...) 
++#define DBG_INFO(fmt, args...)
++#endif
++
+ void btd_log(uint16_t index, int priority, const char *format, ...)
+ 					__attribute__((format(printf, 3, 4)));
+ 
+diff -ruN --new-file bluez_utils-5.43/src/ltrx_device_configuration_service.c bluez_utils-5.43_mod_2/src/ltrx_device_configuration_service.c
+--- bluez_utils-5.43/src/ltrx_device_configuration_service.c	1970-01-01 05:30:00.000000000 +0530
++++ bluez_utils-5.43_mod_2/src/ltrx_device_configuration_service.c	2019-05-08 17:30:42.646727544 +0530
+@@ -0,0 +1,556 @@
++#ifdef HAVE_CONFIG_H
++#include <config.h>
++#endif
++
++#include <stdint.h>
++#include <stdlib.h>
++#include <errno.h>
++#include "src/gatt_services.h"
++
++#define BAD_CHECKSUM_VALUE_ERROR   2
++#define BAD_LENGTH_VALUE_ERROR	 3
++#define UNABLE_TO_PROCESS_XML_FILE 5
++
++#define CLIENT_CHAR_CONFIG_DESC_LENGTH	2
++#define NOTIFY							0x00
++#define INDICATE						0x01
++#define NOTIFY_ENABLED					0x01
++#define NOTIFY_DISABLED					0x00
++
++#define DEVICE_CONFIG_SERVICE_UUID {0xF0, 0xDD, 0x79, 0x9C, \
++									0xC8, 0x83, 0x49, 0x76, \
++									0x96, 0xA5, 0x8B, 0xB4, \
++									0x90 ,0x7F ,0x41, 0xD6}
++
++#define DEVICE_CONFIG_STATUS_CHAR_UUID {0x3B, 0xC6, 0x3A, 0xDD, \
++										0x3B, 0x52, 0x4A, 0x3F, \
++										0xBE, 0x47, 0xA0, 0x48, \
++										0xBC ,0xA2 ,0x48, 0xBF}
++
++#define DEVICE_XML_CONFIG_PACKET_CHAR_UUID {0x24, 0xFD, 0x0A, 0x4F, \
++											0x68, 0x09, 0x44, 0xAB, \
++											0x95, 0x96, 0x52, 0x3D, \
++											0xB9 ,0xEB ,0xCD, 0x47}
++
++#define DEVICE_XML_CONFIG_PACKET_LENGTH_CHAR_UUID {0x60, 0x65, 0x68, 0x16, \
++												   0x87, 0xBE, 0x4C, 0xD0, \
++												   0x9C, 0xA7, 0xE8, 0xB8, \
++												   0x10 ,0xE1 ,0xEC, 0x23}
++
++#define DEVICE_CONFIG_CHECKSUM_CHAR_UUID {0x0B, 0x8E, 0x5A, 0x44, \
++										  0x33, 0x71, 0x4D, 0x0C, \
++										  0xB3, 0x8B, 0x56, 0xC1, \
++										  0xE0 ,0x34 ,0x48, 0xF6}
++
++
++static uint32_t xml_data_current_index;
++static void device_config_status_read_cb(struct gatt_db_attribute *attrib,
++										unsigned int id, uint16_t offset,
++										uint8_t opcode, struct bt_att *att,
++										void *user_data)
++{
++	struct btd_gatt_database *server = user_data;
++	uint8_t error = 0;
++	size_t len = 0;
++	const uint8_t *value = NULL;
++
++	PRLOG("Wifi Device Config Status Read called\n");
++	len = 1;
++
++	if (offset > len)
++	{
++		error = BT_ATT_ERROR_INVALID_OFFSET;
++		goto done;
++	}
++
++	len -= offset;
++	value = len ? &server->device_config_status : NULL;
++
++done:
++	gatt_db_attribute_read_result(attrib, id, error, value, len);
++
++}
++
++static bool calculate_checksum(void *data)
++{
++	struct btd_gatt_database *server = data;
++	uint32_t index;
++	uint32_t calculated_checksum = 0;
++
++	PRLOG("Calculating Checksum\n");
++	for(index = 0; index < server->device_config_xml_data_length; index++)
++	{
++		calculated_checksum += server->device_config_xml_data[index];
++	}
++	calculated_checksum = ~calculated_checksum;
++	calculated_checksum &= 0xFF;
++	calculated_checksum += 1;
++
++	if(calculated_checksum != server->device_config_checksum_value)
++		return false;
++
++	return true;
++}
++
++static void generate_xml_config_file(void *data)
++{
++	struct btd_gatt_database *server = data;
++	FILE* file = fopen("/ltrx_user/device_cfg.xml", "w");
++	uint32_t index;
++
++	for(index = 0; index < server->device_config_xml_data_length; index++)
++	{
++		fputc(server->device_config_xml_data[index], file);
++	}
++
++	fclose(file);
++}
++
++void trim(char *ch)
++{
++	int count = 0;
++
++	while(*ch == ' ') { count = count + 1; ch++; }
++	while(*ch != '\0') { *(ch - count) = *ch; ch++;}
++	*(ch - count) = '\0';
++}
++
++static bool xml_import(void)
++{
++	FILE *fp;
++	char status[100];
++
++	system("curl --anyauth -u admin:PASS http://localhost/import/config -X POST --form configrecord=@/ltrx_user/device_cfg.xml|grep \"<message>All XML configuration records have been imported.</message>\\|<message>ERROR: XML import failed.</message>\" > result");
++	fp = fopen("result", "r");
++	fgets(status, 100, fp);
++	fclose(fp);
++
++	PRLOG("xml status : %s\n", status);
++	system("rm result");
++	trim(status);
++
++	if(!memcmp(status, "<message>ERROR: XML import failed.</message>", 44)) return false;
++	if(!memcmp(status, "<message>All XML configuration records have been imported.</message>", 68)) return true;
++	return false;
++}
++
++static void device_config_status_ccc_read_cb(struct gatt_db_attribute *attrib,
++											unsigned int id, uint16_t offset,
++											uint8_t opcode, struct bt_att *att,
++											void *user_data)
++{
++	struct btd_gatt_database *server = user_data;
++	uint8_t value[2];
++
++	value[0] = server->device_config_status_notify_enabled ? 0x01 : 0x00;
++	value[1] = 0x00;
++
++	gatt_db_attribute_read_result(attrib, id, 0, value, 2);
++}
++
++static void device_config_status_ccc_write_cb(struct gatt_db_attribute *attrib,
++											 unsigned int id, uint16_t offset,
++											 const uint8_t *value, size_t len,
++											 uint8_t opcode, struct bt_att *att,
++											 void *user_data)
++{
++	struct btd_gatt_database *server = user_data;
++	uint8_t ecode = 0;
++	
++	if (!value || len != 2) {
++		ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++		gatt_db_attribute_write_result(attrib, id, ecode);
++		return;
++	}
++	
++	if (offset) { 
++		ecode = BT_ATT_ERROR_INVALID_OFFSET;
++		gatt_db_attribute_write_result(attrib, id, ecode);
++		return;
++	}
++	
++	if (value[0] == NOTIFY_DISABLED)
++		server->device_config_status_notify_enabled = false;
++	else if (value[0] == NOTIFY_ENABLED) {
++		if (!server->device_config_status_notify_enabled)
++			server->device_config_status_notify_enabled = true;
++	} else
++		ecode = 0x80;
++
++	PRLOG("Wifi Device Config Status Notification Enabled: %s\n",
++			server->device_config_status_notify_enabled ? "true" : "false");
++	gatt_db_attribute_write_result(attrib, id, ecode);
++}
++
++void *process_xml_and_send_notification(void *data)
++{
++	struct btd_gatt_database *server = data;
++	struct bt_gatt_server *gatt = btd_device_get_gatt_server(server->device); 
++
++	if(calculate_checksum(data))
++	{
++		PRLOG("Checksum Matched\n");
++		generate_xml_config_file(data);
++		if(xml_import())
++		{
++			  PRLOG("Sending Xml Import Successful Notification\n");
++			  goto done;
++		}
++		else
++		{
++			server->device_config_status = UNABLE_TO_PROCESS_XML_FILE;
++			goto done;
++		}
++	}
++	else
++	{
++		server->device_config_status = BAD_CHECKSUM_VALUE_ERROR;
++		PRLOG("Checksum Mismatch\n");
++	}
++
++done:
++	xml_data_current_index = 0;
++	system("rm /ltrx_user/device_cfg.xml");
++	if(server->device_config_status_notify_enabled)
++		bt_gatt_server_send_notification(gatt, server->device_config_status_notify_handle,
++										&server->device_config_status, 1);
++
++}
++
++static void device_config_xml_data_packet_write_cb(struct gatt_db_attribute *attrib,
++										unsigned int id, uint16_t offset,
++										const uint8_t *value, size_t len,
++										uint8_t opcode, struct bt_att *att,
++										void *user_data)
++{
++	struct btd_gatt_database *server = user_data;
++	uint8_t ecode = 0;
++	struct bt_gatt_server *gatt = btd_device_get_gatt_server(server->device);
++
++	server->device_config_status = 0;
++	pthread_t check_checksum_and_process_xml;
++	/*
++	if (!value || len > 21) {
++			ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++			goto done;
++	}
++
++	if (offset) {
++			ecode = BT_ATT_ERROR_INVALID_OFFSET;
++			goto done;
++	}
++	*/
++	if(xml_data_current_index + len > server->device_config_xml_data_length)
++	{
++		server->device_config_status = BAD_LENGTH_VALUE_ERROR;
++		if (server->device_config_status_notify_enabled)
++		{
++			bt_gatt_server_send_notification(gatt,
++											server->device_config_status_notify_handle,
++											&server->device_config_status, 1);
++		}
++	}
++	else
++	{
++		strncpy(&server->device_config_xml_data[xml_data_current_index], value, len);
++		server->device_config_xml_data[xml_data_current_index + len] = '\0';
++		xml_data_current_index += len; 
++		//PRLOG("Wifi Device Config Xml data packet value after write : %s\n", server->device_config_xml_data);
++		PRLOG("xml_data_current_index = %d server->device_config_xml_data_length = %d\n", xml_data_current_index, server->device_config_xml_data_length); 
++		gatt_db_attribute_write_result(attrib, id, ecode);
++
++		if(xml_data_current_index == server->device_config_xml_data_length)
++		{
++			if (!pthread_create(&check_checksum_and_process_xml, NULL, process_xml_and_send_notification, server)) {
++				PRLOG("process_xml_and_send_notification Thread create successfully !!!\n");
++				if ( ! pthread_detach(check_checksum_and_process_xml) )
++				{	PRLOG("process_xml_and_send_notification Thread detached successfully !!!\n");}
++				else
++				{
++					PRLOG("process_xml_and_send_notification Thread cannot be detached !!!\n");
++				}
++			}
++			else
++			{
++				PRLOG("process_xml_and_send_notification Thread cannot be created !!!\n");
++			}
++		}
++		else
++		{
++			if(server->device_config_status_notify_enabled)
++				bt_gatt_server_send_notification(gatt,
++												server->device_config_status_notify_handle,
++												&server->device_config_status, 1);
++		}
++	}
++}
++
++static void device_config_xml_data_length_read_cb(struct gatt_db_attribute *attrib,
++													unsigned int id, uint16_t offset,
++													uint8_t opcode, struct bt_att *att,
++													void *user_data)
++{
++	struct btd_gatt_database *server = user_data;
++	uint8_t error = 0;
++	size_t len = 8;
++	const uint8_t *value = NULL;
++	uint32_t flag = 0xFF;
++	uint8_t i;
++	uint8_t *xml_data_length_value = malloc(len * sizeof(uint8_t)); 
++
++	PRLOG("Wifi Device Config Xml data length Read called\n");
++
++	if (offset > len)
++	{
++		error = BT_ATT_ERROR_INVALID_OFFSET;
++		goto done;
++	}
++
++	for(i = 0; i < len; i++)
++	{
++		xml_data_length_value[i] = server->device_config_xml_data_length & flag;
++		flag <<= 8;
++	}
++
++	len -= offset;
++	value = len ? xml_data_length_value : NULL;
++
++done:
++	gatt_db_attribute_read_result(attrib, id, error, value, len);
++}
++
++static void device_config_xml_data_length_write_cb(struct gatt_db_attribute *attrib,
++													unsigned int id, uint16_t offset,
++													const uint8_t *value, size_t len,
++													uint8_t opcode, struct bt_att *att,
++													void *user_data)
++{
++	struct btd_gatt_database *server = user_data;
++	struct bt_gatt_server *gatt = btd_device_get_gatt_server(server->device);
++	uint8_t ecode = 0;
++	uint8_t i;
++/*
++	if (!value || len > 21) {
++			ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++			goto done;
++	}
++
++	if (offset) {
++			ecode = BT_ATT_ERROR_INVALID_OFFSET;
++			goto done;
++	}
++*/
++	PRLOG("Device_config xml data length characteritsic write request value length = %d", len);
++	server->device_config_xml_data_length=0;	   
++
++	for(i = len - 1; i > 0; i--)
++	{
++		server->device_config_xml_data_length = server->device_config_xml_data_length + value[i];
++		server->device_config_xml_data_length = server->device_config_xml_data_length << 8;
++		PRLOG("i = %d, server->device_config_xml_data_length = %x\n", i, server->device_config_xml_data_length);
++	}
++
++	server->device_config_xml_data_length = server->device_config_xml_data_length + value[i];
++	PRLOG("i = %d, server->device_config_xml_data_length = %x\n", i, server->device_config_xml_data_length);
++
++	if(server->device_config_xml_data != NULL)
++	{
++		free(server->device_config_xml_data);
++		server->device_config_xml_data = NULL;
++	}
++
++	xml_data_current_index = 0;
++	server->device_config_xml_data = malloc(sizeof(uint8_t) * (server->device_config_xml_data_length + 1));
++	PRLOG("Wifi Device Config xml data length value after write : %ld\n", server->device_config_xml_data_length);
++
++done:
++	gatt_db_attribute_write_result(attrib, id, ecode);
++	server->device_config_status = 0;
++
++	if(server->device_config_status_notify_enabled)
++	{
++		 bt_gatt_server_send_notification(gatt, server->device_config_status_notify_handle,
++										 &server->device_config_status, 1);
++	}
++
++}
++
++static void device_config_checksum_read_cb(struct gatt_db_attribute *attrib,
++											unsigned int id, uint16_t offset,
++											uint8_t opcode, struct bt_att *att,
++											void *user_data)
++{
++	struct btd_gatt_database *server = user_data;
++	uint8_t error = 0;
++	size_t len = 8;
++	const uint8_t *value = NULL;
++	uint8_t *checksum_value = malloc(len * sizeof(uint8_t));
++	uint32_t flag = 0xFF;
++	uint8_t i;
++
++	//PRLOG("Wifi Device Config Checksum Read called\n");
++
++	if (offset > len) {
++		error = BT_ATT_ERROR_INVALID_OFFSET;
++		goto done;
++	}
++
++	for(i = 0; i < len; i++)
++	{
++		 checksum_value[i] = server->device_config_checksum_value & flag;
++		 flag <<= 8;
++	}
++	len -= offset;		
++	value = len ? checksum_value : NULL;
++
++done:
++	gatt_db_attribute_read_result(attrib, id, error, value, len);
++}
++
++static void device_config_checksum_write_cb(struct gatt_db_attribute *attrib,
++											unsigned int id, uint16_t offset,
++											const uint8_t *value, size_t len,
++											uint8_t opcode, struct bt_att *att,
++											void *user_data)
++{
++	struct btd_gatt_database *server = user_data;
++	uint8_t ecode = 0;
++	struct bt_gatt_server *gatt = btd_device_get_gatt_server(server->device);
++	uint8_t i;
++	
++	/*
++	if (!value || len > 21) {
++			ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
++			goto done;
++	}
++
++	if (offset) {
++			ecode = BT_ATT_ERROR_INVALID_OFFSET;
++			goto done;
++	}
++	*/
++	server->device_config_checksum_value=0;
++
++	for(i = len - 1; i > 0; i--)
++	{
++		server->device_config_checksum_value = server->device_config_checksum_value + value[i];
++		server->device_config_checksum_value = server->device_config_checksum_value << 8;
++	}
++	server->device_config_checksum_value = server->device_config_checksum_value + value[i];
++
++	//PRLOG("Wifi Device Config Checksum value after write : %d\n", server->device_config_checksum_value);
++
++done:
++	gatt_db_attribute_write_result(attrib, id, ecode);
++	server->device_config_status = 0;
++
++	if(server->device_config_status_notify_enabled)  
++	{
++		bt_gatt_server_send_notification(gatt, server->device_config_status_notify_handle,
++										&server->device_config_status, 1);
++	}
++}
++
++static void populate_device_config_service_uuid( uint8_t *des)
++{
++	uint8_t loop;
++	uint8_t device_config_service_uuid_data[] = DEVICE_CONFIG_SERVICE_UUID;
++
++	for(loop = 0; loop <= 15; loop++)
++		memcpy(&des[loop], &device_config_service_uuid_data[loop], 1);
++}
++
++static void populate_device_config_status_notify_uuid( uint8_t *des)
++{
++	uint8_t loop;
++	uint8_t device_config_status_notify_uuid_data[] = DEVICE_CONFIG_STATUS_CHAR_UUID;
++
++	for(loop = 0; loop <= 15; loop++)
++		memcpy(&des[loop], &device_config_status_notify_uuid_data[loop], 1);
++}
++
++static void populate_device_config_xml_data_packet_uuid( uint8_t *des)
++{
++	uint8_t loop;
++	uint8_t device_config_xml_data_packet_uuid_data[] = DEVICE_XML_CONFIG_PACKET_CHAR_UUID;
++
++	for(loop = 0; loop <= 15; loop++)
++		memcpy(&des[loop], &device_config_xml_data_packet_uuid_data[loop], 1);
++}
++
++static void populate_device_config_xml_data_packet_length_uuid( uint8_t *des)
++{
++	uint8_t loop;
++	uint8_t device_config_xml_data_packet_length_uuid_data[] = DEVICE_XML_CONFIG_PACKET_LENGTH_CHAR_UUID;
++
++	for(loop = 0; loop <= 15; loop++)
++		memcpy(&des[loop], &device_config_xml_data_packet_length_uuid_data[loop], 1);
++}
++
++static void populate_device_config_checksum_uuid( uint8_t *des)
++{
++	uint8_t loop;
++	uint8_t device_config_checksum_uuid_data[] = DEVICE_CONFIG_CHECKSUM_CHAR_UUID;
++
++	for(loop = 0; loop <= 15; loop++)
++		memcpy(&des[loop], &device_config_checksum_uuid_data[loop], 1);
++}
++
++void populate_device_config_service(struct btd_gatt_database *database)
++{
++	bt_uuid_t uuid;
++	struct gatt_db_attribute *service, *device_config_status_notify_handle, *device_config_status_notify_ccc_handle;
++	uint128_t device_config_128_uuid;
++
++	/* Add Wifi Device Config Service */
++	populate_device_config_service_uuid(device_config_128_uuid.data);
++	bt_uuid128_create(&uuid, device_config_128_uuid);
++	service = gatt_db_add_service(database->db, &uuid, true, 10);
++
++	/* Wifi Device Configuration Status Notification Characteristic */
++	populate_device_config_status_notify_uuid(device_config_128_uuid.data);
++	bt_uuid128_create(&uuid, device_config_128_uuid);
++	device_config_status_notify_handle = gatt_db_service_add_characteristic(service, &uuid,
++																			BT_ATT_PERM_READ, BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_NOTIFY,
++																			device_config_status_read_cb, NULL, database);
++
++	database->device_config_status_notify_handle = gatt_db_attribute_get_handle(device_config_status_notify_handle);
++
++	bt_uuid16_create(&uuid, GATT_CLIENT_CHARAC_CFG_UUID);
++	device_config_status_notify_ccc_handle = gatt_db_service_add_descriptor(service, &uuid, BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++																			device_config_status_ccc_read_cb,
++																			device_config_status_ccc_write_cb, database);
++
++	database->device_config_status_notify_ccc_handle = gatt_db_attribute_get_handle(device_config_status_notify_ccc_handle);
++
++	/* Wifi Device Config XML Data Packet Characteristics */
++	populate_device_config_xml_data_packet_uuid(device_config_128_uuid.data);
++	bt_uuid128_create(&uuid, device_config_128_uuid);
++	gatt_db_service_add_characteristic(service, &uuid,
++										BT_ATT_PERM_WRITE,
++										BT_GATT_CHRC_PROP_WRITE,
++										NULL, device_config_xml_data_packet_write_cb, database);
++
++	/* Wifi Device Config XML Data Packet Length Characteristics */
++	populate_device_config_xml_data_packet_length_uuid(device_config_128_uuid.data);
++	bt_uuid128_create(&uuid, device_config_128_uuid);
++	gatt_db_service_add_characteristic(service, &uuid,
++										BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++										BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_WRITE,
++										device_config_xml_data_length_read_cb, device_config_xml_data_length_write_cb, database);
++
++	/* Wifi Device Config Checksum Characteristics */
++	populate_device_config_checksum_uuid(device_config_128_uuid.data);
++	bt_uuid128_create(&uuid, device_config_128_uuid);
++	gatt_db_service_add_characteristic(service, &uuid,
++										BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
++										BT_GATT_CHRC_PROP_READ | BT_GATT_CHRC_PROP_WRITE,
++										device_config_checksum_read_cb, device_config_checksum_write_cb, database);
++
++	database->device_config_status = 0;
++	database->device_config_xml_data_length = 0;
++	database->device_config_xml_data = NULL;
++	database->device_config_checksum_value = 0;
++	database->device_config_status_notify_enabled = false;
++	gatt_db_service_set_active(service, true);
++}
+diff -ruN --new-file bluez_utils-5.43/src/ltrx_device_info_service.c bluez_utils-5.43_mod_2/src/ltrx_device_info_service.c
+--- bluez_utils-5.43/src/ltrx_device_info_service.c	1970-01-01 05:30:00.000000000 +0530
++++ bluez_utils-5.43_mod_2/src/ltrx_device_info_service.c	2019-05-08 17:30:42.646727544 +0530
+@@ -0,0 +1,97 @@
++#ifdef HAVE_CONFIG_H
++#include <config.h>
++#endif
++
++#include <stdint.h>
++#include <stdlib.h>
++#include <errno.h>
++#include "src/gatt_services.h"
++
++#define UUID_DEVICE_INFO				0x180A
++#define UUID_DEVICE_INFO_MANU_NAME		0x2A29
++#define UUID_DEVICE_INFO_MODEL_NUM		0x2A24
++#define UUID_DEVICE_INFO_SYSTEM_ID		0x2A23
++#define UUID_DEVICE_INFO_SERIAL_NUM		0x2A25
++
++static void get_hostname(char *hostName)
++{
++	FILE *fp = fopen("/tmp/HOSTNAME", "r");
++	fscanf(fp, "%s", hostName);
++	fclose(fp);
++}
++
++void confirm_write(struct gatt_db_attribute *attr, int err, void *user_data)
++{
++	if (!err)
++		return;
++
++	fprintf(stderr, "Error caching attribute %p - err: %d\n", attr, err);
++	exit(1);
++}
++
++void populate_device_info_service(struct btd_gatt_database *database)
++{
++	bt_uuid_t uuid;
++	struct gatt_db_attribute *service, *dev_info_manu_name, *dev_info_model_num, *dev_info_serial_num, *dev_info_system_id;
++	uint8_t manu_name[] = "LANTRONIX";
++	uint8_t model_num[10];
++	uint8_t serial_num[25];
++	uint8_t system_id[] = { 0xbb, 0xb8, 0xa1, 0x80, 0x5f, 0x9f, 0x91, 0x71};
++	uint8_t hostName[40];
++	int index;
++
++	get_hostname(hostName);
++	/* add device info service */
++	bt_uuid16_create(&uuid, UUID_DEVICE_INFO);
++	service = gatt_db_add_service(database->db, &uuid, true, 9);
++
++	/* add manufacture name characteristic */
++	bt_uuid16_create(&uuid, UUID_DEVICE_INFO_MANU_NAME);
++	dev_info_manu_name = gatt_db_service_add_characteristic(service, &uuid,
++															BT_ATT_PERM_READ,
++															BT_GATT_CHRC_PROP_READ,
++															NULL, NULL, database);
++
++	gatt_db_attribute_write(dev_info_manu_name, 0, (void *) manu_name, 9,
++							BT_ATT_OP_WRITE_REQ, NULL, confirm_write, NULL);
++
++	/* add model number characteristic */
++	bt_uuid16_create(&uuid, UUID_DEVICE_INFO_MODEL_NUM);
++	dev_info_model_num = gatt_db_service_add_characteristic(service, &uuid,
++															 BT_ATT_PERM_READ,
++															 BT_GATT_CHRC_PROP_READ,
++															 NULL, NULL, database);
++
++	index = strcspn(hostName, "-");
++	strncpy(model_num, hostName, index);
++
++	gatt_db_attribute_write(dev_info_model_num, 0, (void *) model_num, index,
++													BT_ATT_OP_WRITE_REQ,
++													NULL, confirm_write,
++													NULL); 
++
++	/* add serial number characteristic */
++	bt_uuid16_create(&uuid, UUID_DEVICE_INFO_SERIAL_NUM);
++	dev_info_serial_num = gatt_db_service_add_characteristic(service, &uuid,
++															 BT_ATT_PERM_READ,
++															 BT_GATT_CHRC_PROP_READ,
++															 NULL, NULL, database);
++
++	strcpy(serial_num, &hostName[index+1]);
++
++	gatt_db_attribute_write(dev_info_serial_num, 0, (void *) serial_num, 12,
++							BT_ATT_OP_WRITE_REQ, NULL, confirm_write, NULL);
++
++	/* add system ID characteristic */
++	bt_uuid16_create(&uuid, UUID_DEVICE_INFO_SYSTEM_ID);
++	dev_info_system_id = gatt_db_service_add_characteristic(service, &uuid,
++															 BT_ATT_PERM_READ,
++															 BT_GATT_CHRC_PROP_READ,
++															 NULL, NULL, database);
++
++	gatt_db_attribute_write(dev_info_system_id, 0, (void *) system_id, 8,
++							BT_ATT_OP_WRITE_REQ, NULL, confirm_write, NULL);
++
++	gatt_db_service_set_active(service, true);
++}
++
+diff -ruN --new-file bluez_utils-5.43/src/ltrx_le_advertising_api.h bluez_utils-5.43_mod_2/src/ltrx_le_advertising_api.h
+--- bluez_utils-5.43/src/ltrx_le_advertising_api.h	1970-01-01 05:30:00.000000000 +0530
++++ bluez_utils-5.43_mod_2/src/ltrx_le_advertising_api.h	2019-05-08 17:30:56.062859425 +0530
+@@ -0,0 +1,5 @@
++
++
++void get_hostname(char *hostName);
++void set_advertising_cmd(char *adv_data_cmd, char *hostName);
++void advertise(void);
+diff -ruN --new-file bluez_utils-5.43/src/ltrx_le_advertising.c bluez_utils-5.43_mod_2/src/ltrx_le_advertising.c
+--- bluez_utils-5.43/src/ltrx_le_advertising.c	1970-01-01 05:30:00.000000000 +0530
++++ bluez_utils-5.43_mod_2/src/ltrx_le_advertising.c	2019-06-27 20:18:14.630220664 +0530
+@@ -0,0 +1,54 @@
++#include "ltrx_le_advertising_api.h"
++#include <inttypes.h>
++#include <stdlib.h>
++#include <stdio.h>
++
++void get_hostname(char *hostName)
++{
++	FILE *fp = fopen("/tmp/HOSTNAME", "r");
++	fscanf(fp, "%s", hostName);
++	fclose(fp);
++}
++
++void set_advertising_cmd(char *adv_data_cmd, char *hostName)
++{
++	uint8_t index, ch;
++        if(!strncmp(hostName, "PW2050", 6))
++            sprintf(adv_data_cmd, "hcitool -i hci0 cmd 0x08 0x0008 1C 02 01 18 03 03 0a 18 14 09");
++        else if(!strncmp(hostName, "SGX5150", 7))
++            sprintf(adv_data_cmd, "hcitool -i hci0 cmd 0x08 0x0008 1D 02 01 18 03 03 0a 18 15 09");
++        else
++	    sprintf(adv_data_cmd, "hcitool -i hci0 cmd 0x08 0x0008 1F 02 01 18 03 03 0a 18 17 09");
++	printf("%s\n", adv_data_cmd);
++
++	for(index = 0; index < 22; index++)
++	{
++		if(index < strlen(hostName))
++		{
++			ch = hostName[index];
++			sprintf(adv_data_cmd, "%s %x", adv_data_cmd, ch);
++		}
++		else
++		{
++			sprintf(adv_data_cmd, "%s 00", adv_data_cmd);
++		}
++	}
++}
++
++void advertise(void)
++{
++	int ret;
++	uint8_t adv_data_cmd[128], hostName[40];
++
++	get_hostname(hostName);
++	info("hostName %s\n", hostName);
++
++	set_advertising_cmd(adv_data_cmd, hostName);
++	info("adv_data_cmd %s\n", adv_data_cmd);
++
++	ret = system("hciconfig hci0 leadv0");
++	ret = system(adv_data_cmd);
++	//ret = system("hcitool -i hci0 cmd 0x08 0x0009 04 03 19 C0 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00");
++	ret = system("hciconfig hci0 piscan");
++}
++
+diff -ruN --new-file bluez_utils-5.43/src/main.c bluez_utils-5.43_mod_2/src/main.c
+--- bluez_utils-5.43/src/main.c	2017-06-14 18:25:33.847679804 +0530
++++ bluez_utils-5.43_mod_2/src/main.c	2019-05-09 11:13:18.364099119 +0530
+@@ -218,6 +218,8 @@
+ 	char *str;
+ 	int val;
+ 	gboolean boolean;
++	char hostName[40] = {} ;
++	FILE *fp = NULL;
+ 
+ 	if (!config)
+ 		return;
+@@ -283,7 +285,9 @@
+ 	} else {
+ 		DBG("name=%s", str);
+ 		g_free(main_opts.name);
+-		main_opts.name = str;
++		fp = fopen("/tmp/HOSTNAME", "r");
++		fscanf(fp, "%s", hostName);
++		main_opts.name = hostName;
+ 	}
+ 
+ 	str = g_key_file_get_string(config, "General", "Class", &err);
+diff -ruN --new-file bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod_2/tools/btgatt-server.c
+--- bluez_utils-5.43/tools/btgatt-server.c	2018-07-13 12:19:09.640817130 +0530
++++ bluez_utils-5.43_mod_2/tools/btgatt-server.c	2019-05-09 16:38:16.676853214 +0530
 @@ -28,6 +28,7 @@
  #include <getopt.h>
  #include <unistd.h>
@@ -32,17 +4291,19 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  
  #include "lib/bluetooth.h"
  #include "lib/hci.h"
-@@ -43,12 +44,20 @@
+@@ -42,13 +43,22 @@
+ #include "src/shared/timeout.h"
  #include "src/shared/gatt-db.h"
  #include "src/shared/gatt-server.h"
- 
++#include "pthread.h"
++
 +#if 0
 +#include "mpnipc.h"
 +#include "evolution_defines.h"
 +#include "net_services.h"
 +#include "network_libs.h"
 +#endif
-+
+ 
  #define UUID_GAP			0x1800
  #define UUID_GATT			0x1801
 -#define UUID_HEART_RATE			0x180d
@@ -57,7 +4318,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  
  #define ATT_CID 4
  
-@@ -71,10 +80,16 @@
+@@ -71,10 +81,16 @@
  #define COLOR_BOLDGRAY	"\x1B[1;30m"
  #define COLOR_BOLDWHITE	"\x1B[1;37m"
  
@@ -73,11 +4334,11 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +static bdaddr_t src_addr;
 +static struct server *server;
 +static uint8_t network_id;
-+static uint16_t xml_data_current_index;
++static uint32_t xml_data_current_index;
  struct server {
  	int fd;
  	struct bt_att *att;
-@@ -86,27 +101,109 @@
+@@ -86,27 +102,109 @@
  
  	uint16_t gatt_svc_chngd_handle;
  	bool svc_chngd_enabled;
@@ -131,7 +4392,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +static void set_advertising_cmd(char *adv_data_cmd)
 +{
 +    uint8_t index, ch;
-+    sprintf(adv_data_cmd, "hcitool -i hci0 cmd 0x08 0x0008 1F 02 01 06 03 03 0a 18 17 09");
++    sprintf(adv_data_cmd, "hcitool -i hci0 cmd 0x08 0x0008 1F 02 01 18 03 03 0a 18 17 09");
 +    printf("%s\n", adv_data_cmd);
 +    for(index = 0; index < 22; index++)
 +    {
@@ -198,7 +4459,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  }
  
  static void att_debug_cb(const char *str, void *user_data)
-@@ -271,125 +368,1002 @@
+@@ -271,125 +369,1046 @@
  	gatt_db_attribute_write_result(attrib, id, ecode);
  }
  
@@ -939,8 +5200,9 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +
 +static bool calculate_checksum(void)
 +{
-+    uint16_t index;
++    uint32_t index;
 +    uint32_t calculated_checksum = 0;
++    PRLOG("Calculating Checksum\n");
 +    for(index = 0; index < server->wifi_device_config_xml_data_length; index++)
 +    {
 +        calculated_checksum += server->wifi_device_config_xml_data[index];
@@ -956,7 +5218,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +static void generate_xml_config_file(void)
 +{
 +    FILE* file = fopen("/ltrx_user/device_cfg.xml", "w");
-+    uint16_t index;
++    uint32_t index;
 +    for(index = 0; index < server->wifi_device_config_xml_data_length; index++)
 +    {
 +        fputc(server->wifi_device_config_xml_data[index], file);
@@ -1017,10 +5279,10 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +        FILE *fp;
 +        char status[100];
 +        system("curl --anyauth -u admin:PASS http://localhost/import/config -X POST --form configrecord=@device_cfg.xml|grep \"<message>All XML configuration records have been imported.</message>\\|<message>ERROR: XML import failed.</message>\" > result");
-+        sleep(4);
 +        fp = fopen("result", "r");
 +        fgets(status, 100, fp);
 +        fclose(fp);
++        PRLOG("xml status : %s\n", status);
 +        system("rm result");
 +        trim(status);
 +        if(!memcmp(status, "<message>ERROR: XML import failed.</message>", 44)) return false;
@@ -1076,7 +5338,35 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +                                server->device_config_status_notify_enabled ? "true" : "false");
 +        gatt_db_attribute_write_result(attrib, id, ecode);
 +}
-+
++void *process_xml_and_send_notification(void *data)
++{
++             if(calculate_checksum())
++             {
++                  PRLOG("Checksum Matched\n");
++                  generate_xml_config_file();
++                  if(xml_import())
++                  {
++                      PRLOG("Sending Xml Import Successful Notification\n");
++                      goto done;
++                  }
++                  else
++                  {
++                      server->device_config_status = 5;
++                      goto done;
++                  }
++             }
++             else
++             {
++                  server->device_config_status = 2;
++                  PRLOG("Checksum Mismatch\n");
++             }
++done:
++        xml_data_current_index = 0;
++        system("rm /ltrx_user/device_cfg.xml");
++        if(server->device_config_status_notify_enabled)  bt_gatt_server_send_notification(server->gatt,
++                                                server->device_config_status_notify_handle,
++                                                &server->device_config_status, 1);
++}
 +static void wifi_device_config_xml_data_packet_write_cb(struct gatt_db_attribute *attrib,
 +                                        unsigned int id, uint16_t offset,
 +                                        const uint8_t *value, size_t len,
@@ -1086,6 +5376,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +        struct server *server = user_data;
 +        uint8_t ecode = 0;
 +        server->device_config_status = 0;
++        pthread_t check_checksum_and_process_xml;
 +        /*if (!value || len > 21) {
 +                ecode = BT_ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LEN;
 +                goto done;
@@ -1098,21 +5389,26 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +        if(xml_data_current_index + len > server->wifi_device_config_xml_data_length)
 +        {
 +             server->device_config_status = 3;
-+             goto done;
++             if(server->device_config_status_notify_enabled)  bt_gatt_server_send_notification(server->gatt,
++                                                server->device_config_status_notify_handle,
++                                                &server->device_config_status, 1);
 +        }
++        else {
 +        strncpy(&server->wifi_device_config_xml_data[xml_data_current_index], value, len);
 +        server->wifi_device_config_xml_data[xml_data_current_index + len] = '\0';
 +        xml_data_current_index += len; 
 +        PRLOG("Wifi Device Config Xml data packet value after write : %s\n", server->wifi_device_config_xml_data);
 +        PRLOG("xml_data_current_index = %d server->wifi_device_config_xml_data_length = %d\n", xml_data_current_index, server->wifi_device_config_xml_data_length); 
++        gatt_db_attribute_write_result(attrib, id, ecode);
 +        if(xml_data_current_index == server->wifi_device_config_xml_data_length)
 +        {
-+             if(calculate_checksum()) 
++/*             if(calculate_checksum()) 
 +             {
 +		  PRLOG("Checksum Matched\n");
 +                  generate_xml_config_file();
 +		  if(xml_import())
 +		  {   
++                      PRLOG("Sending Xml Import Successful Notification\n");
 +		      goto done;
 +		  }
 +		  else
@@ -1125,13 +5421,22 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +             {
 +                  server->device_config_status = 2;
 +	          PRLOG("Checksum Mismatch\n");
-+	     }	  
++	     }*/
++             if (!pthread_create(&check_checksum_and_process_xml, NULL, process_xml_and_send_notification, NULL)) {
++                 PRLOG("process_xml_and_send_notification Thread create successfully !!!\n");
++                 if ( ! pthread_detach(check_checksum_and_process_xml) )
++                     PRLOG("process_xml_and_send_notification Thread detached successfully !!!\n");
++                 else
++                     PRLOG("process_xml_and_send_notification Thread cannot be detached !!!\n");
++             } 
++             else {
++                     PRLOG("process_xml_and_send_notification Thread cannot be created !!!\n");
++             }             	  
 +        }
-+done:
-+        gatt_db_attribute_write_result(attrib, id, ecode);
++        else{
 +        if(server->device_config_status_notify_enabled)  bt_gatt_server_send_notification(server->gatt,
 +                                                server->device_config_status_notify_handle,
-+                                                &server->device_config_status, 1);
++                                                &server->device_config_status, 1);}}
 +
 +}
 +
@@ -1185,7 +5490,8 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +                ecode = BT_ATT_ERROR_INVALID_OFFSET;
 +                goto done;
 +        }*/
-+       
++        PRLOG("Device_config xml data length characteritsic write request value length = %d", len);
++        server->wifi_device_config_xml_data_length=0;       
 +        uint8_t i;
 +        for(i = len - 1; i > 0; i--)
 +        {
@@ -1202,8 +5508,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +        }
 +        xml_data_current_index = 0;
 +        server->wifi_device_config_xml_data = malloc(sizeof(uint8_t) * (server->wifi_device_config_xml_data_length + 1));
-+        PRLOG("Wifi Device Config xml data length value after write : %d\n", server->wifi_device_config_xml_data_length);
-+
++        PRLOG("Wifi Device Config xml data length value after write : %ld\n", server->wifi_device_config_xml_data_length);
 +done:
 +        gatt_db_attribute_write_result(attrib, id, ecode);
 +        server->device_config_status = 0;
@@ -1262,7 +5567,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +                ecode = BT_ATT_ERROR_INVALID_OFFSET;
 +                goto done;
 +        }*/
-+
++        server->wifi_device_config_checksum_value=0;
 +        uint8_t i;
 +        for(i = len - 1; i > 0; i--)
 +        {
@@ -1282,7 +5587,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  }
  
  static void confirm_write(struct gatt_db_attribute *attr, int err,
-@@ -450,6 +1424,11 @@
+@@ -450,6 +1469,11 @@
  							BT_ATT_OP_WRITE_REQ,
  							NULL, confirm_write,
  							NULL);
@@ -1294,7 +5599,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  
  	gatt_db_service_set_active(service, true);
  }
-@@ -476,72 +1455,440 @@
+@@ -476,72 +1500,440 @@
  				BT_ATT_PERM_READ | BT_ATT_PERM_WRITE,
  				gatt_svc_chngd_ccc_read_cb,
  				gatt_svc_chngd_ccc_write_cb, server);
@@ -1421,11 +5726,13 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +{
 +    uint8_t loop;
 +    uint8_t wifi_list_length_uuid_data[] = {0x1A, 0x60, 0x09, 0xA0, 0xDD, 0x66, 0x49, 0xBB, 0xBB, 0x07, 0x12, 0xC6, 0xB3 ,0xA0 ,0xE6, 0x9E};
-+
+ 
+-	if (server->hr_visible)
+-		gatt_db_service_set_active(service, true);
 +    for(loop = 0; loop <= 15; loop++)
 +          memcpy(&des[loop], &wifi_list_length_uuid_data[loop], 1);
-+}
-+
+ }
+ 
 +static void populate_wifi_scan_current_index_uuid( uint8_t *des)
 +{
 +    uint8_t loop;
@@ -1434,9 +5741,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +    for(loop = 0; loop <= 15; loop++)
 +          memcpy(&des[loop], &wifi_scan_current_index_uuid_data[loop], 1);
 +}
- 
--	if (server->hr_visible)
--		gatt_db_service_set_active(service, true);
++
 +static void populate_wifi_scan_ssid_uuid( uint8_t *des)
 +{
 +    uint8_t loop;
@@ -1453,8 +5758,8 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +
 +    for(loop = 0; loop <= 15; loop++)
 +          memcpy(&des[loop], &wifi_scan_bssid_uuid_data[loop], 1);
- }
- 
++}
++
 +static void populate_wifi_scan_channel_uuid( uint8_t *des)
 +{
 +    uint8_t loop;
@@ -1779,7 +6084,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  
  	server = new0(struct server, 1);
  	if (!server) {
-@@ -565,17 +1912,6 @@
+@@ -565,17 +1957,6 @@
  		fprintf(stderr, "Failed to set ATT disconnect handler\n");
  		goto fail;
  	}
@@ -1797,7 +6102,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  	server->fd = fd;
  	server->db = gatt_db_new();
  	if (!server->db) {
-@@ -589,7 +1925,6 @@
+@@ -589,7 +1970,6 @@
  		goto fail;
  	}
  
@@ -1805,7 +6110,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  
  	if (verbose) {
  		bt_att_set_debug(server->att, att_debug_cb, "att: ", NULL);
-@@ -597,9 +1932,6 @@
+@@ -597,9 +1977,6 @@
  							"server: ", NULL);
  	}
  
@@ -1815,7 +6120,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  	/* bt_gatt_server already holds a reference */
  	populate_db(server);
  
-@@ -607,7 +1939,6 @@
+@@ -607,7 +1984,6 @@
  
  fail:
  	gatt_db_unref(server->db);
@@ -1823,7 +6128,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  	bt_att_unref(server->att);
  	free(server);
  
-@@ -616,7 +1947,6 @@
+@@ -616,7 +1992,6 @@
  
  static void server_destroy(struct server *server)
  {
@@ -1831,7 +6136,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  	bt_gatt_server_unref(server->gatt);
  	gatt_db_unref(server->db);
  }
-@@ -628,23 +1958,16 @@
+@@ -628,23 +2003,16 @@
  
  	printf("Options:\n"
  		"\t-i, --index <id>\t\tSpecify adapter index, e.g. hci0\n"
@@ -1858,7 +6163,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  	{ }
  };
  
-@@ -710,414 +2033,6 @@
+@@ -710,414 +2078,6 @@
  	return -1;
  }
  
@@ -2273,7 +6578,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  static void signal_cb(int signum, void *user_data)
  {
  	switch (signum) {
-@@ -1129,21 +2044,44 @@
+@@ -1129,21 +2089,44 @@
  		break;
  	}
  }
@@ -2299,7 +6604,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +        }
 +        strcat(hostName, "-");
 +        for(i = 0; i < 12; i++)
-+            serial_no[i] = device_info[i + 15];
++            serial_no[i] = device_info[i + 14];
 +        serial_no[12] = '\0';
 +        strcat(hostName, serial_no);
 +        system("rm hostname");
@@ -2325,7 +6630,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  						main_options, NULL)) != -1) {
  		switch (opt) {
  		case 'h':
-@@ -1152,57 +2090,17 @@
+@@ -1152,57 +2135,17 @@
  		case 'v':
  			verbose = true;
  			break;
@@ -2387,7 +6692,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  		default:
  			fprintf(stderr, "Invalid option: %c\n", opt);
  			return EXIT_FAILURE;
-@@ -1224,32 +2122,25 @@
+@@ -1224,32 +2167,25 @@
  		perror("Adapter not available");
  		return EXIT_FAILURE;
  	}
@@ -2402,7 +6707,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  		return EXIT_FAILURE;
  	}
 -
-+        create_network_id();
++        //create_network_id();
  	mainloop_init();
  
 -	server = server_create(fd, mtu, hr_visible);
@@ -2426,7 +6731,7 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
  	sigemptyset(&mask);
  	sigaddset(&mask, SIGINT);
  	sigaddset(&mask, SIGTERM);
-@@ -1261,8 +2152,10 @@
+@@ -1261,8 +2197,10 @@
  	mainloop_run();
  
  	printf("\n\nShutting down...\n");
@@ -2438,3 +6743,43 @@ diff -ruN bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod/tools/btga
 +        //free(hostName);
  	return EXIT_SUCCESS;
  }
+diff -ruN --new-file bluez_utils-5.43/tools/rfcomm.c bluez_utils-5.43_mod_2/tools/rfcomm.c
+--- bluez_utils-5.43/tools/rfcomm.c	2017-06-14 18:25:33.855679802 +0530
++++ bluez_utils-5.43_mod_2/tools/rfcomm.c	2019-05-08 17:37:12.933653355 +0530
+@@ -434,6 +434,9 @@
+ 	socklen_t alen;
+ 	char dst[18], devname[MAXPATHLEN];
+ 	int sk, nsk, fd, lm, try = 30;
++	char pid[10] = {};
++	char cmd [30] = {};
++	FILE *fp = NULL;
+ 
+ 	laddr.rc_family = AF_BLUETOOTH;
+ 	bacpy(&laddr.rc_bdaddr, bdaddr);
+@@ -538,6 +541,7 @@
+ 	ba2str(&req.dst, dst);
+ 	printf("Connection from %s to %s\n", dst, devname);
+ 	printf("Press CTRL-C for hangup\n");
++	system("logger -s SPP Connected\n");
+ 
+ 	memset(&sa, 0, sizeof(sa));
+ 	sa.sa_flags   = SA_NOCLDSTOP;
+@@ -576,6 +580,18 @@
+ 	sigaction(SIGINT,  &sa, NULL);
+ 
+ 	printf("Disconnected\n");
++	system("logger -s SPP Disconnected\n");
++
++	if( access( "/tmp/ser_cli_4.pid", F_OK ) != -1 ) {
++		fp = fopen("/tmp/ser_cli_4.pid", "r");
++		fscanf(fp, "%s" , pid);
++		sprintf(cmd, "kill -9 %s", pid);
++		system(cmd);
++		fclose(fp); 
++	} else {
++		/* file doesn't exist */
++		system("File doesn't exist\n");
++	}
+ 
+ 	close(fd);
+ 	return;

@@ -17,7 +17,7 @@ IMAGE_INSTALL += "avahi-daemon"
 IMAGE_INSTALL += "avahi-dnsconfd"
 IMAGE_INSTALL += "avahi-utils"
 IMAGE_INSTALL += "bash"
-# IMAGE_INSTALL += "bluez5"
+IMAGE_INSTALL += "bluez5"
 IMAGE_INSTALL += "bridge-utils"
 IMAGE_INSTALL += "busybox"
 IMAGE_INSTALL += "bzip2"
@@ -405,6 +405,9 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/snmpconf-data
     rm -f  ${IMAGE_ROOTFS}/etc/snmp/*
     rm -rf ${IMAGE_ROOTFS}/boot/*
+    mkdir ${IMAGE_ROOTFS}/usr/libexec/
+    mkdir ${IMAGE_ROOTFS}/usr/libexec/bluetooth/
+    cp ${IMAGE_ROOTFS}/usr/lib/bluez5/bluetooth/bluetoothd ${IMAGE_ROOTFS}/usr/libexec/bluetooth/
     find ${IMAGE_ROOTFS}/usr/lib/ipsec -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/libexec/ipsec/  -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/lib/  -name '*.o' | xargs rm -f
