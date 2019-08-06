@@ -82,6 +82,7 @@ static uint8_t multi_byte_value_flag = 0;
 static uint8_t manufacture_first_value_flag = 0;
 uint8_t manufature_first_value_byte = 0;
 bool is_EddystoneBeacon = false;
+uint8_t is_discovering;
 static const char * const agent_arguments[] = {
 	"on",
 	"off",
@@ -318,7 +319,13 @@ static void print_iter(const char *label, const char *name,
 		break;
 	case DBUS_TYPE_BOOLEAN:
 		dbus_message_iter_get_basic(iter, &valbool);
-		rl_printf("%s%s: %s\n", label, name,
+                if(!strcmp(name, "Discovering"))
+                {
+                    rl_printf("%s%s: %s\n", label, name,
+                                        is_discovering == 1 ? "yes" : "no");
+                }
+                else
+		    rl_printf("%s%s: %s\n", label, name,
 					valbool == TRUE ? "yes" : "no");
 		break;
 	case DBUS_TYPE_UINT32:
@@ -1004,7 +1011,7 @@ static void cmd_scan(const char *arg)
 {
 	dbus_bool_t enable;
 	const char *method;
-
+        uint8_t is_discovering_cpy = is_discovering;
 	if (parse_argument_on_off(arg, &enable) == FALSE)
 		return;
 
@@ -1012,15 +1019,21 @@ static void cmd_scan(const char *arg)
 		return;
 
 	if (enable == TRUE)
-		method = "StartDiscovery";
+	{
+        	method = "StartDiscovery";
+                is_discovering = 1;
+        }
 	else
-		method = "StopDiscovery";
-
+	{
+        	method = "StopDiscovery";
+                is_discovering = 0;
+        }
 	if (g_dbus_proxy_method_call(default_ctrl->proxy, method,
 				NULL, start_discovery_reply,
 				GUINT_TO_POINTER(enable), NULL) == FALSE) {
 		rl_printf("Failed to %s discovery\n",
 					enable == TRUE ? "start" : "stop");
+                is_discovering = is_discovering_cpy;
 		return;
 	}
 }
