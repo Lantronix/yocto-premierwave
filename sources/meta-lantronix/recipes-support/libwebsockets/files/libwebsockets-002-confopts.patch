@@ -1,0 +1,20 @@
+--- libwebsockets-v2.4.2/CMakeLists.txt	2018-05-15 10:49:56.984198541 -0700
++++ libwebsockets-v2.4.2-ltrx/CMakeLists.txt	2018-05-15 11:49:44.700428051 -0700
+@@ -99,7 +99,7 @@
+ option(LWS_WITHOUT_EXTENSIONS "Don't compile with extensions" OFF)
+ option(LWS_WITH_LATENCY "Build latency measuring code into the library" OFF)
+ option(LWS_WITHOUT_DAEMONIZE "Don't build the daemonization api" ON)
+-option(LWS_IPV6 "Compile with support for ipv6" OFF)
++option(LWS_IPV6 "Compile with support for ipv6" ON)
+ option(LWS_UNIX_SOCK "Compile with support for UNIX domain socket" OFF)
+ option(LWS_WITH_HTTP2 "Compile with server support for HTTP/2" OFF)
+ option(LWS_SSL_SERVER_WITH_ECDH_CERT "Include SSL server use ECDH certificate" OFF)
+@@ -124,7 +124,7 @@
+ option(LWS_WITH_ZIP_FOPS "Support serving pre-zipped files" ON)
+ option(LWS_AVOID_SIGPIPE_IGN "Android 7+ seems to need this" OFF)
+ option(LWS_WITH_STATS "Keep statistics of lws internal operations" OFF)
+-option(LWS_WITH_SOCKS5 "Allow use of SOCKS5 proxy on client connections" OFF)
++option(LWS_WITH_SOCKS5 "Allow use of SOCKS5 proxy on client connections" ON)
+ option(LWS_WITH_PEER_LIMITS "Track peers and restrict resources a single peer can allocate" OFF)
+ 
+ macro(confirm_command CMD NOCMD)
