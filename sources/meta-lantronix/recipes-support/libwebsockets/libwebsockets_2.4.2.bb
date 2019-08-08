@@ -5,7 +5,12 @@ LIC_FILES_CHKSUM = "file://LICENSE;md5=b415f60bd65e057120037bb15cad7139"
 
 DEPENDS = "zlib libcap"
 
-SRC_URI = "https://github.com/warmcat/libwebsockets/archive/v${PV}.tar.gz"
+SRC_URI = "https://github.com/warmcat/libwebsockets/archive/v${PV}.tar.gz \
+           file://libwebsockets-001-localport.patch \
+           file://libwebsockets-002-confopts.patch \
+           file://libwebsockets-003-proxypassword.patch \
+           file://libwebsockets-004-localport2.patch \
+          "
 
 SRC_URI[md5sum] = "b64300541128baa18828620187453efb"
 SRC_URI[sha256sum] = "73012d7fcf428dedccc816e83a63a01462e27819d5537b8e0d0c7264bfacfad6"
