@@ -17,7 +17,7 @@ IMAGE_INSTALL += "avahi-daemon"
 IMAGE_INSTALL += "avahi-dnsconfd"
 IMAGE_INSTALL += "avahi-utils"
 IMAGE_INSTALL += "bash"
-IMAGE_INSTALL += "bluez5"
+# IMAGE_INSTALL += "bluez5"
 IMAGE_INSTALL += "bridge-utils"
 IMAGE_INSTALL += "busybox"
 IMAGE_INSTALL += "bzip2"
@@ -59,9 +59,19 @@ IMAGE_INSTALL += "ipsec-tools"
 IMAGE_INSTALL += "ikescan"
 IMAGE_INSTALL += "paho-mqtt.embedded-c"
 IMAGE_INSTALL += "python"
+IMAGE_INSTALL += "python-paho-mqtt"
+IMAGE_INSTALL += "python-schedule"
 IMAGE_INSTALL += "python-pyserial"
 IMAGE_INSTALL += "python-pyusb"
 IMAGE_INSTALL += "python-pyzmq"
+IMAGE_INSTALL += "python-requests"
+IMAGE_INSTALL += "python-minimalmodbus"
+IMAGE_INSTALL += "python-pymodbustcp"
+IMAGE_INSTALL += "python-configparser"
+IMAGE_INSTALL += "python-psutil"
+IMAGE_INSTALL += "python-werkzeug"
+IMAGE_INSTALL += "python-flask"
+IMAGE_INSTALL += "python-numpy"
 IMAGE_INSTALL += "python-distutils"
 IMAGE_INSTALL += "python-setuptools"
 IMAGE_INSTALL += "python-importlib"
@@ -260,6 +270,7 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/setuptools/command/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/setuptools/tests/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/wsgiref/*.py
+#    cp ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/MinimalModbus-0.7-py2.7.egg/minimalmodbus.py* ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages// 
     rm -rf ${IMAGE_ROOTFS}/usr/bin/write
     rm -rf ${IMAGE_ROOTFS}/usr/bin/whereis
     rm -rf ${IMAGE_ROOTFS}/usr/bin/wdctl
@@ -407,7 +418,7 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/boot/*
     mkdir ${IMAGE_ROOTFS}/usr/libexec/
     mkdir ${IMAGE_ROOTFS}/usr/libexec/bluetooth/
-    cp ${IMAGE_ROOTFS}/usr/lib/bluez5/bluetooth/bluetoothd ${IMAGE_ROOTFS}/usr/libexec/bluetooth/
+#    cp ${IMAGE_ROOTFS}/usr/lib/bluez5/bluetooth/bluetoothd ${IMAGE_ROOTFS}/usr/libexec/bluetooth/
     find ${IMAGE_ROOTFS}/usr/lib/ipsec -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/libexec/ipsec/  -name '*.old' | xargs rm -f
     find ${IMAGE_ROOTFS}/usr/lib/  -name '*.o' | xargs rm -f
@@ -415,7 +426,11 @@ EOF
 #    find ${IMAGE_ROOTFS}/sbin/     -name 'fsck.ext*' | xargs rm -f
 #    find ${IMAGE_ROOTFS}/sbin/     -name 'mkfs*' | xargs rm -f
 #    rm  -rf ${IMAGE_ROOTFS}/usr/lib/opkg/alternatives/*
-
+    cd ${IMAGE_ROOTFS}/usr/lib/
+    ln -sf libwebsockets.so.12 libwebsockets.so
+    ln -sf libpaho-embed-mqtt3c.so.1.0 libpaho-embed-mqtt3c.so.1
+    ln -sf libpaho-embed-mqtt3c.so.1 libpaho-embed-mqtt3c.so
+    cd -
     mkdir -p ${IMAGE_ROOTFS}/root
 
     chown --recursive --no-dereference root:root ${IMAGE_ROOTFS}

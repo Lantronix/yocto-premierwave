@@ -1,0 +1,8 @@
+[Unit]
+Description=Store device time to persistent storage
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/timesync.sh
+RemainAfterExit=true
+[Install]
+WantedBy=default.target
