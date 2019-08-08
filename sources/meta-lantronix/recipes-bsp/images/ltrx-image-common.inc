@@ -94,6 +94,7 @@ IMAGE_INSTALL += "sshpass"
 IMAGE_INSTALL += "nginx"
 IMAGE_INSTALL += "net-snmp net-snmp-libs net-snmp-mibs net-snmp-server"
 IMAGE_INSTALL += "strace"
+IMAGE_INSTALL += "cryptsetup"
 
 apply_overlay() {
     cp -rf ${THISDIR}/files/overlay/* ${IMAGE_ROOTFS}/
