@@ -8,6 +8,13 @@ trimws() {
     echo "$1"
 }
 
+wait_file() {
+    local file="$1"; shift
+    local wait_seconds="${1:-10}"; shift # 10 seconds as default timeout
+    until test $((wait_seconds--)) -eq 0 -o -f "$file" ; do sleep 1; done
+    ((++wait_seconds))
+}
+
 rem_dev() {
 
     MNTPT_DEV=`mount | awk '/^\/dev\/'"$MDEV"' on/ {print $1}'`
@@ -86,6 +93,10 @@ add_dev() {
     else
         MNTPT_DEV="/ltrx_user/$DRIVE_VENDOR $DRIVE_MODEL $MDEV"
     fi
+    
+    if [ $isLuksDev == 1 ]; then
+	MDEV="mapper/USBDrive"
+    fi
     USB_LABEL=`e2label /dev/$MDEV 2>/dev/null | tr -d '\n'`
     #if [ "$USB_LABEL" != "" ] ; then
     #    MNTPT_DEV="/ltrx_user/$USB_LABEL"
@@ -127,13 +138,53 @@ add_dev() {
     return 0
 }
 
+cryptsetup_eUSB() {
+    key=`cat /etc/ssl/misc/lantronix.key`
+    touch /ltrx_private/usbencryptionkeyfile
+    echo "lantronix.key" > /ltrx_private/usbencryptionkeyfile
+    wait_file "/tmp/mach10.device_key" && {
+        key=`cat /tmp/mach10.device_key`
+	echo "mach10.device_key" > /ltrx_private/usbencryptionkeyfile
+    }
+
+    echo $key | cryptsetup -q luksFormat /dev/$MDEV
+    echo $key | cryptsetup luksOpen /dev/$MDEV USBDrive
+    if [ -e /dev/mapper/USBDrive ]; then
+        mkfs.ext4 -L Lantronix_eUSB /dev/mapper/USBDrive
+    else
+        mkfs.ext4 -L Lantronix_eUSB /dev/$MDEV
+    fi
+    return 0
+}
+
 USB_AUTO_MOUNT="disabled"
 if [ -f /etc/usb_auto_mount ]; then
     . /etc/usb_auto_mount
 fi
-USB_LABEL=`e2label /dev/$MDEV 2>/dev/null | tr -d '\n'`
+
+isLuksDev=0
+cryptsetup isLuks /dev/$MDEV && isLuksDev=1
+logmsg "$MDEV is luks formatted device $isLuksDev"
+if [ $isLuksDev == 0 ]; then
+    USB_LABEL=`e2label /dev/$MDEV 2>/dev/null | tr -d '\n'`
+    if [ "$USB_LABEL" == "Lantronix_eUSB" ] ; then
+        cryptsetup_eUSB
+        cryptsetup isLuks /dev/$MDEV && isLuksDev=1
+        USB_LABEL=`e2label /dev/mapper/USBDrive 2>/dev/null | tr -d '\n'`
+    fi
+else
+    key_file=`cat /ltrx_private/usbencryptionkeyfile`
+    key=`cat /etc/ssl/misc/lantronix.key`
+    if [ "$key_file" == "mach10.device_key" ]; then
+        wait_file "/tmp/mach10.device_key" && {
+            key=`cat /tmp/mach10.device_key`
+        }
+    fi
+    echo $key | cryptsetup luksOpen /dev/$MDEV USBDrive
+    USB_LABEL=`e2label /dev/mapper/USBDrive 2>/dev/null | tr -d '\n'`
+fi
+
 if [ "$USB_LABEL" == "Lantronix_eUSB" ] ; then
-    logmsg "mount eUSB $USB_LABEL $MDEV"
     USB_AUTO_MOUNT="enabled"
 fi
 if [ "$USB_AUTO_MOUNT" == "enabled" ] ; then
