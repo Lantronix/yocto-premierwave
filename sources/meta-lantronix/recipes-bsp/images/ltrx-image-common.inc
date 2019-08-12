@@ -155,11 +155,11 @@ EOF
         ln -s ${bindir}/dhcp6c ${IMAGE_ROOTFS}/bin/dhcp6c
     fi
 
-    if [ -e ${IMAGE_ROOTFS}/${bindir}/ltrx_cli ]; then
+    if [ -e ${IMAGE_ROOTFS}/bin/ltrx_cli ]; then
     	chmod 4755 ${IMAGE_ROOTFS}/bin/ltrx_cli
     fi
     chmod 4755 ${IMAGE_ROOTFS}/usr/sbin/wpa_cli
-    if [ -e ${IMAGE_ROOTFS}/${bindir}/ser_con ]; then
+    if [ -e ${IMAGE_ROOTFS}/bin/ser_con ]; then
     	chmod 4755 ${IMAGE_ROOTFS}/bin/ser_con
     fi
     chmod 4755 ${IMAGE_ROOTFS}/usr/bin/traceroute.traceroute
@@ -168,6 +168,8 @@ EOF
     chmod 4755 ${IMAGE_ROOTFS}/bin/ping6.iputils
     chmod 4755 ${IMAGE_ROOTFS}/sbin/ebtables
     chmod 4755 ${IMAGE_ROOTFS}/usr/sbin/iptables
+    chmod 4755 ${IMAGE_ROOTFS}/usr/sbin/mrouted > /dev/null 2>&1
+    chmod 4755 ${IMAGE_ROOTFS}/usr/bin/strace > /dev/null 2>&1
 
     openssl smime -encrypt -aes256 -in ${IMAGE_ROOTFS}/defaults/factory.xcr -outform PEM -out ${IMAGE_ROOTFS}/defaults/factory.xcr.tmp ${IMAGE_ROOTFS}/etc/ssl/misc/lantronix.crt
     mv ${IMAGE_ROOTFS}/defaults/factory.xcr.tmp ${IMAGE_ROOTFS}/defaults/factory.xcr
