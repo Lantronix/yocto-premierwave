@@ -164,6 +164,14 @@ fi
 
 isLuksDev=0
 cryptsetup isLuks /dev/$MDEV && isLuksDev=1
+
+if [ $isLuksDev == 1 ]; then
+    if [ ! -e /ltrx_private/usbencryptionkeyfile ]; then
+        mkfs.ext4 -L Lantronix_eUSB /dev/$MDEV
+        isLuksDev=0
+    fi
+fi
+
 logmsg "$MDEV is luks formatted device $isLuksDev"
 if [ $isLuksDev == 0 ]; then
     USB_LABEL=`e2label /dev/$MDEV 2>/dev/null | tr -d '\n'`
