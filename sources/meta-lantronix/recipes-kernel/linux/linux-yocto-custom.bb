@@ -43,8 +43,8 @@ SRC_URI_append_pw2050 = "file://pw2050.cfg"
 SRC_URI_append_sgx5150 = "file://sgx5150.cfg"
 
 #Uncomment this if pw2050 device spi should enumerate as a slave to make the changes in device tree,\
-#by default pw2050 will be SPI master without this patch.
-SRC_URI_append_pw2050 += "file://spi_slave_enable.patch"
+#by default it is commneted since pw2050 will be SPI master without this patch.
+#SRC_URI_append_pw2050 += "file://spi_slave_enable.patch"
 
 # remove this if using git!
 S = "${WORKDIR}/linux-at91"
