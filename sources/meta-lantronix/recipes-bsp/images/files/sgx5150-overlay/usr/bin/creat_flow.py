@@ -2,6 +2,7 @@ import array
 import json
 import subprocess
 import os
+import os.path
 import sys
 
 flow_file = sys.argv[1]
@@ -12,7 +13,13 @@ f = open(pid_file,"w+")
 with open(flow_file, 'r') as fp:
     obj = json.load(fp)
 for i in range(0,len(obj)):
-	script_file = obj[i]['script_path']
+	file_name = obj[i]['script_path']
+        script_path = "/ltrx_user/"+file_name 
+        if os.path.isfile(script_path):
+            script_file = script_path
+        else:
+            script_file = "/usr/bin/"+file_name
+
 	temp = str(obj[i]['parameters'])
 	params = temp.split(',')
 	params_new = []
