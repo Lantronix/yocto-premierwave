@@ -111,7 +111,7 @@ do_install_append() {
         install -D -m 0755 ${B}/lib/.libs/libbtgatt-server.so ${D}/usr/lib/libbtgatt-server.so
         install -D -m 0755 ${B}/lib/.libs/libbluetooth.so ${D}/usr/lib/libbluetooth.so
         install -D -m 0755 ${B}/lib/libltrx-beacon.so ${D}/usr/lib/libltrx-beacon.so
-        install -D -m 0755 ${B}/lib/libltrx-beacon.so ${D}/usr/lib/libltrx-gattclient.so
+        install -D -m 0755 ${B}/lib/libltrx-gattclient.so ${D}/usr/lib/libltrx-gattclient.so
         install -d -m 0644 ${D}${includedir}/btio
         install -d -m 0644 ${D}${includedir}/lib
         install -d -m 0644 ${D}${includedir}/src/shared
@@ -141,6 +141,7 @@ do_install_append() {
         cp ${THISDIR}/bluez5/include/btio/btio.h ${D}/usr/include/btio/
         cp ${THISDIR}/bluez5/include/src/shared/crypto.h ${D}/usr/include/src/shared/
         cp ${THISDIR}/bluez5/include/src/shared/util.h ${D}/usr/include/src/shared/
+        cp ${THISDIR}/bluez5/include/src/shared/gatt.h ${D}/usr/include/src/shared/
         cp ${THISDIR}/bluez5/include/lib/bluetooth.h ${D}/usr/include/lib/
         cp ${THISDIR}/bluez5/include/lib/hci.h ${D}/usr/include/lib/ 
         cp ${THISDIR}/bluez5/include/lib/hci_lib.h ${D}/usr/include/lib/ 
