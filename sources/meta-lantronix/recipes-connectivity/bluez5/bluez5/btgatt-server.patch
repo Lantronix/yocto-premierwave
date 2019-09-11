@@ -8552,8 +8552,16 @@ diff -ruN --new-file bluez_utils-5.43/tools/btgatt-server.c bluez_utils-5.43_mod
  }
 diff -ruN --new-file bluez_utils-5.43/tools/hcitool.c bluez_utils-5.43_mod_2/tools/hcitool.c
 --- bluez_utils-5.43/tools/hcitool.c	2017-06-14 18:25:33.855679802 +0530
-+++ bluez_utils-5.43_mod_2/tools/hcitool.c	2019-08-29 14:37:08.548540553 +0530
-@@ -2411,7 +2411,7 @@
++++ bluez_utils-5.43_mod_2/tools/hcitool.c	2019-09-11 16:15:02.165855413 +0530
+@@ -39,6 +39,7 @@
+ #include <sys/ioctl.h>
+ #include <sys/socket.h>
+ #include <signal.h>
++#include <time.h>
+ 
+ #include "lib/bluetooth.h"
+ #include "lib/hci.h"
+@@ -2411,7 +2412,7 @@
  	struct hci_filter nf, of;
  	struct sigaction sa;
  	socklen_t olen;
@@ -8562,16 +8570,25 @@ diff -ruN --new-file bluez_utils-5.43/tools/hcitool.c bluez_utils-5.43_mod_2/too
  
  	olen = sizeof(of);
  	if (getsockopt(dd, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {
-@@ -2439,7 +2439,7 @@
+@@ -2432,14 +2433,14 @@
+ 	sa.sa_flags = SA_NOCLDSTOP;
+ 	sa.sa_handler = sigint_handler;
+ 	sigaction(SIGINT, &sa, NULL);
+-
++        time_t start_second, current_second;
++        start_second = time(NULL);
+ 	while (1) {
+ 		evt_le_meta_event *meta;
+ 		le_advertising_info *info;
  		char addr[18];
- 
+-
  		while ((len = read(dd, buf, sizeof(buf))) < 0) {
 -			if (errno == EINTR && signal_received == SIGINT) {
 +			if ((errno == EINTR && signal_received == SIGINT) || num_of_scanned_devices > 400) {
  				len = 0;
  				goto done;
  			}
-@@ -2461,15 +2461,20 @@
+@@ -2461,15 +2462,21 @@
  		info = (le_advertising_info *) (meta->data + 1);
  		if (check_report_filter(filter_type, info)) {
  			char name[30];
@@ -8591,7 +8608,8 @@ diff -ruN --new-file bluez_utils-5.43/tools/hcitool.c bluez_utils-5.43_mod_2/too
 +                        else 
 +                            printf("%s\t%s\t\t(Unknown address type)\n", addr, name);
  		}
-+                if(num_of_scanned_devices > 400) break;
++                current_second = time(NULL);
++                if(num_of_scanned_devices > 400 || (current_second - start_second) > 8) break;
  	}
  
  done:
