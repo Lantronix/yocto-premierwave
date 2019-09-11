@@ -516,9 +516,9 @@ static GOptionEntry options[] = {
 		"Specify the MTU size", "MTU" },
 	{ "psm", 'p', 0, G_OPTION_ARG_INT, &opt_psm,
 		"Specify the PSM for GATT/ATT over BR/EDR", "PSM" },
-	{ "sec-level", 'l', 0, G_OPTION_ARG_STRING, &opt_sec_level,
+/*	{ "sec-level", 'l', 0, G_OPTION_ARG_STRING, &opt_sec_level,
 		"Set security level. Default: low", "[low | medium | high]"},
-	{ NULL },
+	{ NULL },*/
 };
 
 int main(int argc, char *argv[])

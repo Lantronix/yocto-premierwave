@@ -1,6 +1,6 @@
 diff -ruN --new-file bluez_utils-5.43/attrib/ltrx_gatttool.c bluez_utils-5.43_mod_2/attrib/ltrx_gatttool.c
 --- bluez_utils-5.43/attrib/ltrx_gatttool.c	1970-01-01 05:30:00.000000000 +0530
-+++ bluez_utils-5.43_mod_2/attrib/ltrx_gatttool.c	2019-08-29 14:39:32.282566356 +0530
++++ bluez_utils-5.43_mod_2/attrib/ltrx_gatttool.c	2019-09-11 12:32:59.577554094 +0530
 @@ -0,0 +1,622 @@
 +/*
 + *
@@ -520,8 +520,8 @@ diff -ruN --new-file bluez_utils-5.43/attrib/ltrx_gatttool.c bluez_utils-5.43_mo
 +		"Specify the MTU size", "MTU" },
 +	{ "psm", 'p', 0, G_OPTION_ARG_INT, &opt_psm,
 +		"Specify the PSM for GATT/ATT over BR/EDR", "PSM" },
-+	{ "sec-level", 'l', 0, G_OPTION_ARG_STRING, &opt_sec_level,
-+		"Set security level. Default: low", "[low | medium | high]"},
++	/*{ "sec-level", 'l', 0, G_OPTION_ARG_STRING, &opt_sec_level,
++		"Set security level. Default: low", "[low | medium | high]"},*/
 +	{ NULL },
 +};
 +
@@ -626,7 +626,7 @@ diff -ruN --new-file bluez_utils-5.43/attrib/ltrx_gatttool.c bluez_utils-5.43_mo
 +}
 diff -ruN --new-file bluez_utils-5.43/attrib/ltrx_interactive.c bluez_utils-5.43_mod_2/attrib/ltrx_interactive.c
 --- bluez_utils-5.43/attrib/ltrx_interactive.c	1970-01-01 05:30:00.000000000 +0530
-+++ bluez_utils-5.43_mod_2/attrib/ltrx_interactive.c	2019-08-29 14:39:32.282566356 +0530
++++ bluez_utils-5.43_mod_2/attrib/ltrx_interactive.c	2019-09-11 11:24:25.150431701 +0530
 @@ -0,0 +1,1057 @@
 +/*
 + *
@@ -823,8 +823,8 @@ diff -ruN --new-file bluez_utils-5.43/attrib/ltrx_interactive.c bluez_utils-5.43
 +	attrib = NULL;
 +	opt_mtu = 0;
 +
-+	g_io_channel_shutdown(iochannel, FALSE, NULL);
-+	g_io_channel_unref(iochannel);
++	//g_io_channel_shutdown(iochannel, FALSE, NULL);
++	//g_io_channel_unref(iochannel);
 +	iochannel = NULL;
 +
 +	set_state(STATE_DISCONNECTED);
@@ -1460,8 +1460,8 @@ diff -ruN --new-file bluez_utils-5.43/attrib/ltrx_interactive.c bluez_utils-5.43
 +		"Characteristic Value Write (Write Request)" },
 +	{ "char-write-cmd",	cmd_char_write,	"<handle> <new value>",
 +		"Characteristic Value Write (No response)" },
-+	{ "sec-level",		cmd_sec_level,	"[low | medium | high]",
-+		"Set security level. Default: low" },
++	/*{ "sec-level",		cmd_sec_level,	"[low | medium | high]",
++		"Set security level. Default: low" },*/
 +	{ "mtu",		cmd_mtu,	"<value>",
 +		"Exchange MTU for GATT/ATT" },
 +	{ NULL, NULL, NULL}
