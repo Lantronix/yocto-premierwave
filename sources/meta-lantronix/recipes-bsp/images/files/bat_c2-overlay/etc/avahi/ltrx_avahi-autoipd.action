@@ -125,9 +125,16 @@ elif [ -x /bin/ifconfig -o -x /sbin/ifconfig ] ; then
         BIND)
             ifconfig "$2:avahi" inet "$3" netmask 255.255.0.0 broadcast 169.254.255.255 up
             if [ -e /tmp/bridging.active -a $2 = $BRIDGE_WLANDEV ] ; then
-                echo "ETH_IP=$3" > $ETH_IP_FILE
-                /bin/chmod 777 $ETH_IP_FILE
-                ifconfig "${BRIDGE_ETHDEV}:avahi" inet "$3" netmask 255.255.0.0 broadcast 169.254.255.255 up
+                IFCFILE=$IFCBASE/ifcfg-$BRIDGE_ETHDEV
+                if [ ! -f $IFCFILE ]; then
+                    logger -p "user.err" "avahi-autoipd: missing bridge ethernet interface configuration."
+                fi
+                . $IFCFILE
+                if [ "$BOOTPROTO" != "static" ]; then
+                    echo "ETH_IP=$3" > $ETH_IP_FILE
+                    /bin/chmod 777 $ETH_IP_FILE
+                    ifconfig "${BRIDGE_ETHDEV}:avahi" inet "$3" netmask 255.255.0.0 broadcast 169.254.255.255 up
+                fi
                 sleep 1
             fi
             type="${2:0:3}"
@@ -151,7 +158,14 @@ elif [ -x /bin/ifconfig -o -x /sbin/ifconfig ] ; then
         CONFLICT|STOP|UNBIND)
             ifconfig "$2:avahi" down
             if [ -e /tmp/bridging.active -a $2 = $BRIDGE_WLANDEV ] ; then
-                ifconfig "${BRIDGE_ETHDEV}:avahi" down
+                IFCFILE=$IFCBASE/ifcfg-$BRIDGE_ETHDEV
+                if [ ! -f $IFCFILE ]; then
+                    logger -p "user.err" "avahi-autoipd: missing bridge ethernet interface configuration."
+                fi
+                . $IFCFILE
+                if [ "$BOOTPROTO" != "static" ]; then
+                    ifconfig "${BRIDGE_ETHDEV}:avahi" down
+                fi
             fi
             rm -f /tmp/autoip."$2"
             ;;
