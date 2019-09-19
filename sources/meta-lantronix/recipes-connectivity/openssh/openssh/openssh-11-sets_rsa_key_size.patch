@@ -1,0 +1,12 @@
+diff -Naur openssh-7.6p1/sshkey.h ltrx-openssh-7.6p1/sshkey.h
+--- openssh-7.6p1/sshkey.h	2017-10-03 01:04:26.000000000 +0530
++++ ltrx-openssh-7.6p1/sshkey.h	2019-02-06 11:05:34.684023850 +0530
+@@ -46,7 +46,7 @@
+ # define EC_POINT	void
+ #endif /* WITH_OPENSSL */
+ 
+-#define SSH_RSA_MINIMUM_MODULUS_SIZE	1024
++#define SSH_RSA_MINIMUM_MODULUS_SIZE    512	
+ #define SSH_KEY_MAX_SIGN_DATA_SIZE	(1 << 20)
+ 
+ struct sshbuf;

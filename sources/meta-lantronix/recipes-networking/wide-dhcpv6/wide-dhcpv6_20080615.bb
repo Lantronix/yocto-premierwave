@@ -1,5 +1,5 @@
 DESCRIPTION = "Wide DHCPv6 is a program for supporting the DHCPv6 protocol."
-LICENSE = "MIT"
+LICENSE = "BSD"
 LIC_FILES_CHKSUM = "file://COPYRIGHT;md5=c180fcd362bda6abeae4ca1f7d7ac3fc"
 DEPENDS += "flex"
 
@@ -10,6 +10,7 @@ SRC_URI = "${SOURCEFORGE_MIRROR}/project/${BPN}/${BPN}/${BPN}-${PV}/${BPN}-${PV}
            file://0004-printf.patch \
            file://0005-dhcp-type3.patch \
            file://0006-config-close.patch \
+           file://0007-call-client-script-after-interfaces-have-been-updated.patch \
           "
 SRC_URI[md5sum] = "1011e165850fe40d3e332dad2bfd30b3"
 SRC_URI[sha256sum] = "55a66174a1edeabd90029b83cb3fff8e0b63718a556ce95b97d464a87fd1bd81"
@@ -23,6 +24,7 @@ EXTRA_OECONF += " \
                  ac_cv_func_daemon=yes \
                  ac_cv_func_warnx=yes \
                  ac_cv_func_arc4random=no \
+                 --with-localdbdir=/ltrx_private/ \
                 "
 
 do_install() {

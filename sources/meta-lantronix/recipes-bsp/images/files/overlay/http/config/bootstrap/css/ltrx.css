@@ -109,3 +109,8 @@ h4.logo {
   position: absolute;
   z-index: 100;
 }
+
+.table-responsive
+{
+    overflow-x: hidden;
+}

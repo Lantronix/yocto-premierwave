@@ -1,0 +1,63 @@
+<?xml version="1.0" standalone="yes"?>
+<!-- Automatically generated XML -->
+<!DOCTYPE configrecord [
+   <!ELEMENT configrecord (configgroup+)>
+   <!ELEMENT configgroup (configitem+,configgroup*)>
+   <!ELEMENT configitem (value+)>
+   <!ELEMENT value (#PCDATA)>
+   <!ATTLIST configrecord version CDATA #IMPLIED>
+   <!ATTLIST configgroup name CDATA #IMPLIED>
+   <!ATTLIST configgroup instance CDATA #IMPLIED>
+   <!ATTLIST configitem name CDATA #IMPLIED>
+   <!ATTLIST configitem instance CDATA #IMPLIED>
+   <!ATTLIST value name CDATA #IMPLIED>
+]>
+<configrecord version = "0.1.0.0T0">
+   <configgroup name = "wlan profile" instance = "default_infrastructure_profile">
+       <configitem name = "profile type">
+           <value>User Defined</value>
+       </configitem>
+       <configitem name = "interface">
+           <value></value>
+       </configitem>
+       <configitem name = "priority">
+           <value>0 </value>
+       </configitem>
+       <configitem name = "bssid">
+           <value></value>
+       </configitem>
+       <configitem name = "basic">
+           <value name = "network name">Lantronix Initial Infra Network</value>
+           <value name = "state">enable</value>
+       </configitem>
+       <configitem name = "advanced">
+           <value name = "tx power maximum">31 dBm</value>
+           <value name = "power management">disable</value>
+       </configitem>
+       <configitem name = "security">
+           <value name = "suite">None</value>
+           <value name = "key type">Passphrase</value>
+           <value name = "passphrase"></value>
+           <value name = "wep authentication">Open</value>
+           <value name = "wep key size">40</value>
+           <value name = "wep tx key index">1</value>
+           <value name = "wep key 1"></value>
+           <value name = "wep key 2"></value>
+           <value name = "wep key 3"></value>
+           <value name = "wep key 4"></value>
+           <value name = "wpax authentication">802.1X</value>
+           <value name = "wpax pmf">Disabled</value>
+           <value name = "wpax key"></value>
+           <value name = "wpax ieee 802.1x">EAP-TLS</value>
+           <value name = "wpax eap-ttls option">EAP-MSCHAPV2</value>
+           <value name = "wpax peap option">EAP-MSCHAPV2</value>
+           <value name = "wpax fast option">MD5</value>
+           <value name = "wpax fast provisioning">Authenticated</value>
+           <value name = "wpax username"></value>
+           <value name = "wpax password"></value>
+           <value name = "wpax validate certificate">disable</value>
+           <value name = "wpax credentials"></value>
+           <value name = "wpax inner credentials"></value>
+       </configitem>
+   </configgroup>
+</configrecord>

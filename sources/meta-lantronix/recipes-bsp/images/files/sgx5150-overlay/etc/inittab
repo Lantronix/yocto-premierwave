@@ -15,7 +15,7 @@
 
 # Startup the system
 null::sysinit:/bin/mount -t proc proc /proc
-null::sysinit:/bin/mount -o remount,sync,rw /
+null::sysinit:/bin/mount -o remount,sync,ro /
 null::sysinit:/bin/mkdir -p /dev/pts
 null::sysinit:/bin/mount -a
 null::sysinit:/bin/mount -o remount,size=64M /tmp
@@ -32,12 +32,16 @@ null::sysinit:/bin/echo out >/sys/class/gpio/gpio254/direction
 null::sysinit:/bin/echo 1 >/sys/class/gpio/gpio254/value
 null::sysinit:/bin/echo 0 >/sys/class/gpio/gpio249/value
 
+null::sysinit:/sbin/devmem 0xfffff860 32 0x00040000
+null::sysinit:/sbin/devmem 0xfffff894 32 0x00040000
+
 # bring up radio subsystem power early
 null::sysinit:/sbin/ltrx-radio-up &
 
 null::sysinit:/sbin/ltrx_remount_etc
 
 null::sysinit:/bin/mkdir -m777 /tmp/tftp &
+null::sysinit:/bin/mkdir -p -m777 /tmp/nginx/logs/ &
 null::sysinit:/bin/mkdir -m755 /tmp/avahi-autoipd &
 null::sysinit:/bin/mkdir -p /ltrx_private/cfg &
 # delete cfgldr_inputs in case it exists, which includes credential info
@@ -86,6 +90,8 @@ null::sysinit:/bin/ltrx_as > /dev/null 2>&1 &
 null::sysinit:/bin/netman &
 
 # Put a getty on the serial port
+#ttyS0::respawn:/sbin/getty ttyS0 115200 vt100
+#ttyGS0::respawn:/sbin/getty ttyGS0 115200 vt100
 #ttyS0::respawn:-/bin/sh
 
 # Stuff to do before rebooting

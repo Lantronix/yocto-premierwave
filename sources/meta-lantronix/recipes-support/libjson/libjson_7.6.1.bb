@@ -1,7 +1,7 @@
 DESCRIPTION = "JSON-C - A JSON implementation in C"
 HOMEPAGE = "http://oss.metaparadigm.com/json-c/"
 
-LICENSE = "MIT"
+LICENSE = "BSD"
 LIC_FILES_CHKSUM = "file://License.txt;md5=cebe661e002daaeae68254a3c8b7a7df"
 
 SRC_URI = "file://libjson_7.6.1.zip \

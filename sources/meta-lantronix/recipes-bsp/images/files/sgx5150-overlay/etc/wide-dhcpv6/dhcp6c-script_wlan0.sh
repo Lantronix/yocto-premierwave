@@ -22,7 +22,15 @@ rm -f $DOMAIN_CONF
 [ -n "$new_domain_name" ] && echo "DHCP_DOMAIN=\"$new_domain_name\"" > $DOMAIN_CONF
 touch $DOMAIN_CONF
 
-if [ -e /tmp/bridging.active ] ; then
+BRIDGE_CONF=/etc/brmgr-br0
+if [ -f $BRIDGE_CONF ]; then
+    . $BRIDGE_CONF
+else
+    BRIDGE_ETHDEV="eth0"
+    BRIDGE_WLANDEV="wlan0"
+fi
+
+if [ -e /tmp/bridging.active -a "$interface" = "$BRIDGE_WLANDEV" -a "$BRIDGE_TRANSPARENT" = "disabled" -a "$BRIDGE_MODE" = "host" ] ; then
     ebtables -t broute -D BROUTING --concurrent -i wlan0 --proto ipv6 --ip6-protocol udp --ip6-source-port 546:547 --ip6-destination-port 546:547 -j DROP
     while true; do
         nrules=`ebtables -t broute --concurrent -L  | grep  'ip6-sport 546:547' | grep 'ip6-dport 546:547' | wc -l`
@@ -36,4 +44,5 @@ fi
 #run network script to update resolv.conf and routes etc.
 . $LTRX_NET_COMMON
 ltrx_start_network ${interface}
+restart_l3_bridging ${interface}
 exit 0

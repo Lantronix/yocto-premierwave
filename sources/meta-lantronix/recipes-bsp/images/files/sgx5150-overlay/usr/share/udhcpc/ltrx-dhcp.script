@@ -45,7 +45,7 @@ case "$1" in
         rm -f /etc/sysconfig/dhcp_ip_${interface}
         echo "DHCP_IPADDR=$ip" > /etc/sysconfig/dhcp_ip_${interface}
         /bin/chmod 777 /etc/sysconfig/dhcp_ip_${interface}
-        if [ -e /tmp/bridging.active -a $interface = $BRIDGE_WLANDEV -a $BRIDGE_TRANSPARENT = "disabled" ] ; then
+        if [ -e /tmp/bridging.active -a $interface = $BRIDGE_WLANDEV -a $BRIDGE_TRANSPARENT = "disabled" -a "$BRIDGE_MODE" = "host" ] ; then
             # Disable DHCP interception
             ebtables -t broute -D BROUTING --concurrent -p 0x0800 -i $BRIDGE_WLANDEV --ip-protocol udp --ip-source-port 67:68 --ip-destination-port 67:68 -j DROP
             while true; do
@@ -96,6 +96,10 @@ case "$1" in
         #run network script to update resolv.conf and routes etc.
         . $LTRX_NET_COMMON
         ltrx_start_network ${interface}
+        logger -p "user.debug" "EXEC restart_l3_bridging $$ : ${interface} $ip"
+        restart_l3_bridging ${interface} $ip
+        logger -p "user.debug" "Unsolicited ARP mode, update your neighbors $$ : ${interface} $ip"
+        arping -I $interface -U $ip -c1
         ;;
 esac
 

@@ -3,9 +3,8 @@ SECTION = "libs"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
-SRC_URI = "svn://svn.code.sf.net/p/cjson/code;module=.;rev=${PV} \
+SRC_URI = "file://cjson-58.tar.gz \
 "
-
 SRC_URI += "\
   file://001-cjson-lax.patch \
 "

@@ -16,7 +16,7 @@
 SOFT_AP_CFG_FILE="/tmp/softapcfg"
 DHCP_SERVER_CONFIG_FILE=/etc/dnsmasq.conf
 DHCP_SERVER_PID_FILE=/var/run/wl0.1.dnsmasq.pid
-
+DHCP_SERVER_LEASE_FILE=/ltrx_private/wl0.1.dnsmasq.leases
 WLAN_IFCFILE=/etc/sysconfig/network-scripts/ifcfg-wlan0
 
 # For the time being we're using dnsmasq...
@@ -24,12 +24,14 @@ update_dhcp_server_config() {
     echo "interface=$1" >> "$DHCP_SERVER_CONFIG_FILE"
     echo "except-interface=lo" >> "$DHCP_SERVER_CONFIG_FILE"
     echo "bind-interfaces" >> "$DHCP_SERVER_CONFIG_FILE"
+    echo "dhcp-leasefile=/ltrx_private/wl0.1.dnsmasq.leases" >> "$DHCP_SERVER_CONFIG_FILE"
     echo "dhcp-range=$2,$3,12h" >> "$DHCP_SERVER_CONFIG_FILE"
     #router
     echo "dhcp-option=option:router,$4" >> "$DHCP_SERVER_CONFIG_FILE"
     #dns-server
     echo "server=$4" >> "$DHCP_SERVER_CONFIG_FILE"
     echo "dhcp-option=option:dns-server,$4" >> "$DHCP_SERVER_CONFIG_FILE"
+    echo "dhcp-option=252,\"\n\"" >> "$DHCP_SERVER_CONFIG_FILE"
     sync
     return 0
 }
@@ -106,6 +108,16 @@ if [ "$1" == "start" ]; then
         exit 1
     fi
 
+    if [ "$SSID_BROADCAST" == "no" ]; then
+        #closed is 0 (open) by default
+        wl -i wl0.1 closed 1
+        rc=$?
+        if [ $rc != 0 ]; then
+            logger -p "user.err" "closed failed with ${rc}"
+            exit 1
+        fi
+    fi
+
     wl -i wl0.1 wsec "$ENCRYPTION"
     rc=$?
     if [ $rc != 0 ]; then
@@ -146,15 +158,23 @@ if [ "$1" == "start" ]; then
     # Now set up the interface and DHCP server:
     /sbin/ifconfig wl0.1 $IP_ADDRESS netmask $NETMASK up
     update_dhcp_server_config wl0.1 $DHCP_START $DHCP_END $IP_ADDRESS
+    if [ -n "$MTU" ]; then
+        /sbin/ifconfig wl0.1 mtu $MTU
+        echo "dhcp-option=26,$MTU" >> "$DHCP_SERVER_CONFIG_FILE"
+    fi
     IPV6_AAAA_RECORD=""
     if [ "$DHCPV6" == "yes" ]; then
         ip addr add $IPV6_ADDRESS dev wl0.1
-        echo "dhcp-range=$DHCP6_START,$DHCP6_END,12h" >> "$DHCP_SERVER_CONFIG_FILE"
-        echo "dhcp-option=option6:dns-server,[$IPV6_ADDRESS]" >> "$DHCP_SERVER_CONFIG_FILE"
+        if [ -n "$MTU" ]; then
+            sysctl -w net.ipv6.conf.wl0.1.mtu=$MTU
+        fi
+        echo "dhcp-range=$DHCP6_START,$DHCP6_END,slaac,64,24h" >> "$DHCP_SERVER_CONFIG_FILE"
+        IPV6_ROUTER_IP=`echo $IPV6_ADDRESS | awk -F'/' '{print $1}'`
+        echo "dhcp-option=option6:dns-server,[$IPV6_ROUTER_IP]" >> "$DHCP_SERVER_CONFIG_FILE"
         echo "enable-ra" >> "$DHCP_SERVER_CONFIG_FILE"
-        echo "ra-param=wl0.1,60,120" >> "$DHCP_SERVER_CONFIG_FILE"
+        echo "ra-param=wl0.1,60" >> "$DHCP_SERVER_CONFIG_FILE"
         sync
-        IPV6_AAAA_RECORD=",$IPV6_ADDRESS"
+        IPV6_AAAA_RECORD=",$IPV6_ROUTER_IP"
     else
         logger -p "user.info" "IPv6 is disabled on access point."
         echo 1 > /proc/sys/net/ipv6/conf/wl0.1/disable_ipv6
@@ -165,7 +185,7 @@ if [ "$1" == "start" ]; then
             ip -6 addr del $addr dev wl0.1 scope link
         done
     fi
-    /usr/sbin/dnsmasq --host-record=lantronix.local,$IP_ADDRESS$IPV6_AAAA_RECORD --host-record=$DNS_REDIRECT,$IP_ADDRESS$IPV6_AAAA_RECORD --pid-file=$DHCP_SERVER_PID_FILE
+    /usr/sbin/dnsmasq -l $DHCP_SERVER_LEASE_FILE --host-record=lantronix.local,$IP_ADDRESS$IPV6_AAAA_RECORD --host-record=$DNS_REDIRECT,$IP_ADDRESS$IPV6_AAAA_RECORD --pid-file=$DHCP_SERVER_PID_FILE
 
 elif [ "$1" == "stop" ]; then
 

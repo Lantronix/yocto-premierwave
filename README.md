@@ -1,7 +1,7 @@
 # Using Lantronix PremierWave BSP Yocto Project
 
 ## Summary
-These instructions show how Customer can use PremierWave BSP Yocto to create a ROM image for pw2050 or sgx5150 that will include their own applications/configuration.
+These instructions show how Customer can use PremierWave BSP Yocto to create a ROM image for pw2050, sgx5150, or bat_c2 that will include their own applications/configuration.
 
 This is based on Yocto Jethro.
 
@@ -23,14 +23,17 @@ Build the ROM image and SDK as follows (assuming the repo is cloned to the folde
 ~/yocto_premierwave/sources$ git clone -b jethro git://git.openembedded.org/meta-openembedded.git
 ~/yocto_premierwave/sources$ cd ..
 ~/yocto_premierwave$ ./customer_set_target.sh pw2050
-    * This set the target to pw2050.  For sgx5150, change "pw2050" to "sgx5150".
+    * This sets the target to pw2050.  For sgx5150, change "pw2050" to "sgx5150". For bat_c2, change "pw2050" to "bat_c2".
 ~/yocto_premierwave$ source sources/poky/oe-init-build-env build
 ~/yocto_premierwave/build$ bitbake ltrx-customer-image
 ~/yocto_premierwave/build$ bitbake ltrx-customer-image -c populate_sdk
 ```
-The step "bitbake ltrx-customer-image" builds the target ROM image ("PW2050_*.rom" in "build/tmp/deploy/images/pw2050/" for pw2050, or "SGX5150_*.rom" in "build/tmp/deploy/images/sgx5150/" for sgx5150).  The initial build takes about 1 hour.  A build after modification to your application is much faster because it only processes the changes.
+The step "bitbake ltrx-customer-image" builds the target ROM image 
+("PW2050_*.rom" in "build/tmp/deploy/images/pw2050/" for pw2050, "SGX5150_*.rom" in "build/tmp/deploy/images/sgx5150/" for sgx5150, "BAT-C2_*.rom" in "build/tmp/deploy/images/bat_c2/" for bat_c2).  
+The initial build takes about 1 hour.  A build after modification to your application is much faster because it only processes the changes.
 
-The step "bitbake ltrx-customer-image -c populate_sdk" builds the SDK, "poky-glibc-x86_64-ltrx-customer-image-armv5e-toolchain-2.0.3.sh" (together with two other manifest files), under the folder "build/tmp/deploy/sdk/".  This build takes about another 30 minutes, and the built SDK is the same for pw2050 and sgx5150.
+The step "bitbake ltrx-customer-image -c populate_sdk" builds the SDK, "poky-glibc-x86_64-ltrx-customer-image-armv5e-toolchain-2.0.3.sh" (together with two other manifest files), under the folder "build/tmp/deploy/sdk/".  
+This build takes about another 30 minutes, and the built SDK is the same for pw2050, sgx5150, and bat_c2.
 
 ## Install SDK
 Go to the folder containing the built SDK and install it:

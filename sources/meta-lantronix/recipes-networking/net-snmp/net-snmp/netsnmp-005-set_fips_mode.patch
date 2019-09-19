@@ -1,0 +1,31 @@
+--- netsnmp-5.7.2.1/agent/snmpd.c	2014-02-19 16:36:42.000000000 -0800
++++ netsnmp-5.7.2.1.fips/agent/snmpd.c	2018-01-18 10:20:24.347387787 -0800
+@@ -411,6 +411,19 @@
+      */
+ }
+ 
++static void set_fips_mode()
++{
++    if (access("/tmp/.fipsModeOn", F_OK) != 0) return;
++
++    if (!FIPS_mode_set(1)) {
++        ERR_load_crypto_strings();
++        ERR_print_errors_fp(stderr);
++        system("logger failed in set_fips_mode in netsnmp/snmpd.c");
++    } else {
++        system("logger succeeded in set_fips_mode in netsnmp/snmpd.c");
++    }
++}
++
+ /*******************************************************************-o-******
+  * main - Non Windows
+  * SnmpDaemonMain - Windows to support windows service
+@@ -455,7 +468,7 @@
+         (void) close(i);
+     }
+ #endif /* #WIN32 */
+-    
++    set_fips_mode();    
+     /*
+      * register signals ASAP to prevent default action (usually core)
+      * for signals during startup...

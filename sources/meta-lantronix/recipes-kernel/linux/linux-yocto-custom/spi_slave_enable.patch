@@ -1,0 +1,17 @@
+diff --git a/arch/arm/boot/dts/ltrx_at9g252-q2.dts b/arch/arm/boot/dts/ltrx_at9g252-q2.dts
+index 65a670e..ff39315 100644
+--- a/arch/arm/boot/dts/ltrx_at9g252-q2.dts
++++ b/arch/arm/boot/dts/ltrx_at9g252-q2.dts
+@@ -47,10 +47,9 @@
+                 apb {
+                         spi1: spi@f0004000 {
+                         status = "okay";
+-                        cs-gpios = <&pioA 8 0>, <0>, <0>, <0>;
+-                        spidev@0 {
++                        spi-slave;
++                        slave {
+                                 compatible = "spidev";
+-                                reg = <0>;
+                                 spi-max-frequency = <50000000>;
+                         };
+                 };

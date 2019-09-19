@@ -59,7 +59,7 @@ else
     BRIDGE_WLANDEV="wlan0"
 fi
 
-if [ -e /tmp/bridging.active -a $IFCNAME = $BRIDGE_WLANDEV -a $TRANSPARENT = "enabled" -a $NETWORKACCESS = "enabled" ] ; then
+if [ -e /tmp/bridging.active -a "$IFCNAME" = "$BRIDGE_WLANDEV" -a "$TRANSPARENT" = "enabled" -a "$NETWORKACCESS" = "enabled" ]; then
     logger -p "user.debug" "ifstop: transparent bridging with network access ($BOOTPROTO configuration): save network information"
     rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
     exit 0
@@ -98,7 +98,7 @@ fi
 rm -f /etc/sysconfig/dhcp6_dns_$IFCNAME
 rm -f /etc/sysconfig/dhcp6_domain_$IFCNAME
 
-if [ -e /tmp/bridging.active -a $IFCNAME = $BRIDGE_WLANDEV -a $TRANSPARENT = "disabled" ] ; then
+if [ -e /tmp/bridging.active -a "$IFCNAME" = "$BRIDGE_WLANDEV" -a "$TRANSPARENT" = "disabled" -a "$BRIDGE_MODE" = "host" ]; then
     # Disable DHCP interception (ipv6).
     ebtables -t broute -D BROUTING --concurrent -i $BRIDGE_WLANDEV --proto ipv6 --ip6-protocol udp --ip6-source-port 546:547 --ip6-destination-port 546:547 -j DROP
     # Disable DHCP interception (ipv4).
@@ -111,6 +111,9 @@ done
 #for addr in $(ip -6 addr show dev $IFCNAME scope link | grep inet6 | awk '{print $2}'); do
 #    ip -6 addr del $addr dev $IFCNAME scope link
 #done
+# Remove AutoIPv6 Conf - EAPoL
+sysctl -w net.ipv6.conf.$IFCNAME.autoconf=0
+sysctl -w net.ipv6.conf.$IFCNAME.accept_ra=0
 #run network script to update resolv.conf and routes etc.
 . $LTRX_NET_COMMON
 ltrx_start_network $IFCNAME

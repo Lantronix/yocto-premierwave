@@ -1,0 +1,57 @@
+--- vsftpd-3.0.2/sysutil.c	2018-05-14 11:17:05.042935768 -0700
++++ ltrx-vsftpd-3.0.2/sysutil.c	2018-05-14 11:18:05.516160679 -0700
+@@ -358,14 +358,18 @@
+     int retval = read(fd, p_buf, size);
+     int saved_errno = errno;
+     vsf_sysutil_check_pending_actions(kVSFSysUtilIO, retval, fd);
+-    if (retval < 0 && saved_errno == EINTR)
++    if (retval < 0 && (saved_errno == EAGAIN || saved_errno == EINTR))
+     {
++      char msg[1024];
++      snprintf(msg,sizeof(msg),"vsf_sysutil_read: retval:%d, errno:%d %d|%d", retval, saved_errno, EAGAIN, EINTR);
++      vsf_sysutil_syslog(msg,1);
+       continue;
+     }
+     return retval;
+   }
+ }
+ 
++#define NSEC_PER_SEC    1000000000  /* nanoseconds per second */
+ int
+ vsf_sysutil_write(const int fd, const void* p_buf, const unsigned int size)
+ {
+@@ -379,14 +383,33 @@
+     if (retval < 0 && saved_errno == EINTR)
+     {
+     }
+-    else if (retval < 0 && saved_errno == EAGAIN && retry++ < 11)
++    else if (retval < 0 && saved_errno == EAGAIN && retry++ < 60)
+     {
+       struct timespec ts = { .tv_sec = 0, .tv_nsec = 40000000 };
+       ts.tv_nsec *= retry;
++      //set_normalized_timespec(&ts2, ts.tv_sec, ts.tv_nsec);
++      while(ts.tv_nsec >= NSEC_PER_SEC)
++      {
++        ts.tv_nsec -= NSEC_PER_SEC;
++        ts.tv_sec ++; 
++        vsf_sysutil_syslog("normalize timespec",1); 
++      }
++      if(retry > 5)
++      {
++        char msg[1024];
++        snprintf(msg,sizeof(msg),"vsf_sysutil_write: retries:%d, retval:%d, errno:%d %d|%d, sec:%d nsec:%d", retry, retval, saved_errno, EAGAIN, EINTR, ts.tv_sec, ts.tv_nsec);
++        vsf_sysutil_syslog(msg,1);      
++      }
+       nanosleep(&ts, 0);
+     }
+     else
+     {
++      if(retval < 0)
++      {
++        char msg[1024];
++        snprintf(msg,sizeof(msg),"vsf_sysutil_write: retries:%d, retval:%d, errno:%d %d|%d", retry, retval, saved_errno, EAGAIN, EINTR);  
++        vsf_sysutil_syslog(msg,1); 
++      }
+       return retval;
+     }
+   }
