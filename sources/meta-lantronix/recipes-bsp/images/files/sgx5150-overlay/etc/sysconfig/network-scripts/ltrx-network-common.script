@@ -69,7 +69,7 @@ restart_l3_bridging()
             fi
             logger -p "user.debug" "restart_l3_bridging: ACTIVE interface: $THIS_IF, bridging: $BRIDGE_STATE, EXT_IF=$BRIDGE_WLANDEV, INT_IF=$INT_IF, BOOTPROTO: [$BOOTPROTO]"
             FORWARDING_LAYER="2"
-            WLAN_STATE=`wpa_cli -i $BRIDGE_WLANDEV 2>/dev/null | grep ^wpa_state= | awk -F'=' '{print $2}'`
+            #WLAN_STATE=`wpa_cli -i $BRIDGE_WLANDEV 2>/dev/null | grep ^wpa_state= | awk -F'=' '{print $2}'`
             logger -p "user.debug" "restart_l3_bridging: ACTIVE interface: $THIS_IF, bridging: $BRIDGE_STATE, EXT_IF=$BRIDGE_WLANDEV, state: [$WLAN_STATE], INT_IF=$INT_IF"
             if [ -f $DHCP_CONF ]; then
                 . $DHCP_CONF
