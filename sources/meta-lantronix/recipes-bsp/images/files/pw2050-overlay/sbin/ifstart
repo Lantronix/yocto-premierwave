@@ -330,7 +330,9 @@ if [ "$IPV6" = "yes" ] ; then
         WLAN_MAC1=$(( $WLAN_MAC1 ^ 2 ))
         LINKLOCAL_ADDRESS_MID="ff:fe"
         ip token set ::$WLAN_MAC1$WLAN_MAC2:$WLAN_MAC3$LINKLOCAL_ADDRESS_MID$WLAN_MAC4:$WLAN_MAC5$WLAN_MAC6 dev $IFCNAME
-        while true; do
+        #do not wait forever here, the interface may be gone as in dynamic mac bridging, interface is brought down but there is dependency between brmgr and netman
+        retries=0
+        while [ $retries -lt 10 ]; do
             OLD_LINKLOCAL_ADDRESS=`ip -6 addr show dev $IFCNAME scope link | grep inet6 | head -n1 | awk '{print $2}'`
             if [ -n "$OLD_LINKLOCAL_ADDRESS" ] ; then
                 LINKLOCAL_MASK=`ip -6 addr show dev $IFCNAME scope link | grep inet6 | head -n1 | awk -F'/' '{print $2}' | awk '{print $1}'`
@@ -345,7 +347,8 @@ if [ "$IPV6" = "yes" ] ; then
                 break
             else
                 usleep 500000
-                logger -p "user.warn" "ifstart: waiting for OLD_LINKLOCAL_ADDRESS2 for $IFCNAME"
+                logger -p "user.warn" "ifstart: waiting for OLD_LINKLOCAL_ADDRESS2 for $IFCNAME. $retries of 10"
+                retries=$((retries+1))
             fi
         done
     fi
