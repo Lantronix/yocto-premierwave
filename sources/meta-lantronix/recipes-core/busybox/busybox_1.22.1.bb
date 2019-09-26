@@ -41,6 +41,7 @@ SRC_URI = "http://www.busybox.net/downloads/busybox-${PV}.tar.bz2;name=tarball \
            file://0104-busybox-1.22.1-applets-permissions.patch \
            file://0105--busybox-1.22.1-syslog-counters.patch \
            file://0106--busybox-1.22.1-syslog-remotelog-localport.patch \
+           file://0107--busybox-1.22.1-dhcpc-savexid.patch \
            file://defconfig \
 "
 
