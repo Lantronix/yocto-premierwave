@@ -17,3 +17,10 @@ append_inittab() {
 }
 ROOTFS_POSTPROCESS_COMMAND += "append_inittab; "
 
+postbuild() {
+    echo 'root login'
+
+    # uncomment the following line to disable the root login
+    #sed -i 's/root:[a-zA-Z0-9$/]*:\([0-9]*\):\([0-9]*\):\([0-9]*\):\([0-9]*\):\([0-9]*\):\([0-9]*\):/root:!!:\1:\2:\3:\4:\5:\6:/g' ${IMAGE_ROOTFS}/etc/shadow
+}
+ROOTFS_POSTPROCESS_COMMAND += "postbuild; "
