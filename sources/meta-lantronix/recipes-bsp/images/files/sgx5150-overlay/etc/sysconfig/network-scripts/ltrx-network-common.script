@@ -110,6 +110,7 @@ restart_l3_bridging()
         killall dhcrelay
         if [ "$DHCP_RELAY_MODE" = "yes" -a "$DHCP_SERVER_IP" != "" ]; then
             #Relay DHCP requests between clients and server
+            #this is needed in router+dhcp relay configuration
             dhcrelay -d -a -D -id $INT_IF -iu $EXT_IF -U $EXT_IF $DHCP_SERVER_IP&#for IPv4
         fi
         if [ "$DHCP6_RELAY_MODE" = "yes" ]; then
@@ -289,7 +290,7 @@ ltrx_start_network() {
                             ACTIVEGW=${IF_GW}
                             echo "ACTIVE_GATEWAY=${ACTIVEGW}" > ${ACTIVEGW_FILE}
                         fi
-                        if [ -f /tmp/bridging.active -a -f /etc/sysconfig/network_ap0 -a "${current_interface}" == "$BRIDGE_WLANDEV" -a $TRANSPARENT == "disabled" ]; then
+                        if [ -f /tmp/bridging.active -a "${current_interface}" == "$BRIDGE_WLANDEV" -a $TRANSPARENT == "disabled" ]; then
                             #re-add the routes if available
                             if [ -e /tmp/bripaddress ] ; then
                                 . /tmp/bripaddress
@@ -355,11 +356,12 @@ ltrx_start_network() {
                         fi
                     fi
                 fi
-                if [ -f /tmp/bridging.active -a -f /etc/sysconfig/network_ap0 -a "${current_interface}" == "$BRIDGE_WLANDEV" -a $TRANSPARENT == "disabled" ]; then
+                if [ -f /tmp/bridging.active -a "${current_interface}" == "$BRIDGE_WLANDEV" -a $TRANSPARENT == "disabled" ]; then
                     #re-add the routes if available
                     if [ -e /tmp/bripv6address ] ; then
                         . /tmp/bripv6address
-                        ip route add $BRCLIENT_IPV6 dev $BRIDGE_ETHDEV
+                        ip -6 route add $BRCLIENT_IPV6 dev $BRIDGE_ETHDEV
+                        ip -6 neigh add proxy $BRCLIENT_IPV6 dev $BRIDGE_WLANDEV
                     fi
                 fi
             fi
