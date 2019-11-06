@@ -107,11 +107,56 @@ if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_ETHDEV ] ; then
             . /tmp/bripaddress
             ip route add $BRCLIENT_IP dev $BRIDGE_ETHDEV
         fi
+        if [ -e /tmp/bripaddress2 ] ; then
+            IPV4ADDRESSES=`cat /tmp/bripaddress2 2>/dev/null | awk '{print $2}'`
+            OLDIFS=$IFS
+            IFS=$'\n'
+            for IP in $IPV4ADDRESSES; do
+                ip route add $IP dev $BRIDGE_ETHDEV
+            done
+            IFS=$OLDIFS
+        fi
+        if [ -e /tmp/l2nat.tbl ] ; then
+            IPADDRESSES=`cat /tmp/l2nat.tbl 2>/dev/null | awk '{print $2}'`
+            OLDIFS=$IFS
+            IFS=$'\n'
+            for IP in $IPADDRESSES; do
+                if [[ $IP != *":"* ]]; then
+                    logger -p "user.debug" "ifstart: l2nat add ipv4 route $IP"
+                    ip route add $IP dev $BRIDGE_ETHDEV
+                fi
+            done
+            IFS=$OLDIFS
+        fi
     fi
     if [ "$IPV6" = "yes" ] ; then
         if [ -e /tmp/bripv6address ] ; then
             . /tmp/bripv6address
-            ip route add $BRCLIENT_IPV6 dev $BRIDGE_ETHDEV
+            ip -6 route add $BRCLIENT_IPV6 dev $BRIDGE_ETHDEV
+            ip -6 neigh add proxy $BRCLIENT_IPV6 dev $BRIDGE_WLANDEV
+        fi
+        if [ -e /tmp/bripv6address2 ] ; then
+            IPV6ADDRESSES=`cat /tmp/bripv6address2 2>/dev/null | awk '{print $2}'`
+            OLDIFS=$IFS
+            IFS=$'\n'
+            for IP in $IPV6ADDRESSES; do
+                ip -6 route add $IP dev $BRIDGE_ETHDEV
+                ip -6 neigh add proxy $IP dev $BRIDGE_WLANDEV
+            done
+            IFS=$OLDIFS
+        fi
+        if [ -e /tmp/l2nat.tbl ] ; then
+            IPADDRESSES=`cat /tmp/l2nat.tbl 2>/dev/null | awk '{print $2}'`
+            OLDIFS=$IFS
+            IFS=$'\n'
+            for IP in $IPADDRESSES; do
+                if [[ $IP == *":"* ]]; then
+                    logger -p "user.debug" "ifstart: l2nat add ipv6 route $IP"
+                    ip -6 route add $IP dev $BRIDGE_ETHDEV
+                    ip -6 neigh add proxy $IP dev $BRIDGE_WLANDEV
+                fi
+            done
+            IFS=$OLDIFS
         fi
     fi
 fi
@@ -223,6 +268,27 @@ if [ "$IPV4" = "yes" ] ; then
                 if [ -e /tmp/bripaddress ] ; then
                     . /tmp/bripaddress
                     ip route add $BRCLIENT_IP dev $BRIDGE_ETHDEV
+                fi
+                if [ -e /tmp/bripaddress2 ] ; then
+                    IPV4ADDRESSES=`cat /tmp/bripaddress2 2>/dev/null | awk '{print $2}'`
+                    OLDIFS=$IFS
+                    IFS=$'\n'
+                    for IP in $IPV4ADDRESSES; do
+                        ip route add $IP dev $BRIDGE_ETHDEV
+                    done
+                    IFS=$OLDIFS
+                fi
+                if [ -e /tmp/l2nat.tbl ] ; then
+                    IPADDRESSES=`cat /tmp/l2nat.tbl 2>/dev/null | awk '{print $2}'`
+                    OLDIFS=$IFS
+                    IFS=$'\n'
+                    for IP in $IPADDRESSES; do
+                        if [[ $IP != *":"* ]]; then
+                            logger -p "user.debug" "ifstart: l2nat add ipv4 route $IP"
+                            ip route add $IP dev $BRIDGE_ETHDEV
+                        fi
+                    done
+                    IFS=$OLDIFS
                 fi
             fi
             #run network script to update resolv.conf and routes etc.
@@ -361,7 +427,31 @@ if [ "$IPV6" = "yes" ] ; then
             if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_ETHDEV ] ; then
                 if [ -e /tmp/bripv6address ] ; then
                     . /tmp/bripv6address
-                    ip route add $BRCLIENT_IPV6 dev $BRIDGE_ETHDEV
+                    ip -6 route add $BRCLIENT_IPV6 dev $BRIDGE_ETHDEV
+                    ip -6 neigh add proxy $BRCLIENT_IPV6 $BRIDGE_WLANDEV
+                fi
+                if [ -e /tmp/bripv6address2 ] ; then
+                    IPV6ADDRESSES=`cat /tmp/bripv6address2 2>/dev/null | awk '{print $2}'`
+                    OLDIFS=$IFS
+                    IFS=$'\n'
+                    for IP in $IPV6ADDRESSES; do
+                        ip -6 route add $IP dev $BRIDGE_ETHDEV
+                        ip -6 neigh add proxy $IP dev $BRIDGE_WLANDEV
+                    done
+                    IFS=$OLDIFS
+                fi
+                if [ -e /tmp/l2nat.tbl ] ; then
+                    IPADDRESSES=`cat /tmp/l2nat.tbl 2>/dev/null | awk '{print $2}'`
+                    OLDIFS=$IFS
+                    IFS=$'\n'
+                    for IP in $IPADDRESSES; do
+                        if [[ $IP == *":"* ]]; then
+                            logger -p "user.debug" "ifstart: l2nat add ipv6 route $IP"
+                            ip -6 route add $IP dev $BRIDGE_ETHDEV
+                            ip -6 neigh add proxy $IP dev $BRIDGE_WLANDEV
+                        fi
+                    done
+                    IFS=$OLDIFS
                 fi
             fi
             #run network script to update resolv.conf and routes etc.
@@ -449,6 +539,7 @@ if [ -f /etc/sysconfig/dhcpd ]; then
             fi
             killall dhcrelay
             #Relay DHCP requests between clients and server
+            #this is needed in router+dhcp relay configuration
             dhcrelay -d -a -D -id $INT_IF -iu $EXT_IF -U $EXT_IF $DHCP_SERVER_IP&#for IPv4
 
             #Relay DHCPv6 requests between clients and server
