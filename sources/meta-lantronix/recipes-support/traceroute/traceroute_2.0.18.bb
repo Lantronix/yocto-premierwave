@@ -25,7 +25,7 @@ SRC_URI[sha256sum] = "5994a88520927fefe3c9754aaf1e02b4d0f3f8fb1f521a68fa86215c3f
 
 do_compile() {
     export LDFLAGS="${TARGET_LDFLAGS} -L${S}/libsupp"
-    oe_runmake "env=yes"
+    oe_runmake "VPATH=${STAGING_DIR}/${MACHINE}/usr/lib/" "env=yes"
 }
 
 do_install() {
