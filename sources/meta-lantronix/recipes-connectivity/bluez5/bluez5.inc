@@ -17,11 +17,9 @@ PACKAGECONFIG[obex-profiles] = "--enable-obex,--disable-obex,libical"
 PACKAGECONFIG[experimental] = "--enable-experimental"
 
 SRC_URI = "\
-    ${KERNELORG_MIRROR}/linux/bluetooth/bluez-${PV}.tar.xz \
-    file://btgatt-server.patch \
-    ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', '', 'file://0001-Allow-using-obexd-without-systemd-in-the-user-sessio.patch', d)} \
+    file://bluez_utils-devel-${PV}.tar.gz \
 "
-S = "${WORKDIR}/bluez-${PV}"
+S = "${WORKDIR}/bluez_utils-devel-${PV}"
 
 inherit autotools-brokensep pkgconfig systemd
 
