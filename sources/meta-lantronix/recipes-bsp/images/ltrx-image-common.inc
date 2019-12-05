@@ -65,10 +65,18 @@ IMAGE_INSTALL += "python-pyzmq"
 IMAGE_INSTALL += "python-distutils"
 IMAGE_INSTALL += "python-setuptools"
 IMAGE_INSTALL += "python-importlib"
-IMAGE_INSTALL += "python-dbus"
-IMAGE_INSTALL += "python-pygobject"
+# IMAGE_INSTALL += "python-dbus"
+# IMAGE_INSTALL += "python-pygobject"
 IMAGE_INSTALL += "python-certifi"
 # IMAGE_INSTALL += "python-pip"
+# IMAGE_INSTALL += "python3"
+# IMAGE_INSTALL += "python3-pyserial"
+# IMAGE_INSTALL += "python3-pyusb"
+# IMAGE_INSTALL += "python3-pyzmq"
+# IMAGE_INSTALL += "python3-distutils"
+# IMAGE_INSTALL += "python3-setuptools"
+# IMAGE_INSTALL += "python3-importlib"
+# IMAGE_INSTALL += "python3-certifi"
 IMAGE_INSTALL += "quagga"
 IMAGE_INSTALL += "readline"
 IMAGE_INSTALL += "rng-tools"
@@ -407,6 +415,13 @@ EOF
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/numpy/oldnumeric/tests/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/*.py
     rm -rf ${IMAGE_ROOTFS}/usr/lib/python2.7/site-packages/nose/plugins/*.py
+    # python 3 stuff
+    # if python2 is not installed and python3 is installed, make it the default
+    if [ ! -e ${IMAGE_ROOTFS}/usr/bin/python -a -e ${IMAGE_ROOTFS}/usr/bin/python3 ]; then
+        cd ${IMAGE_ROOTFS}/usr/bin/
+        ln -sf python3 python
+        cd --
+    fi
     rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/mibs/*
     rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/mib2c*
     rm -rf ${IMAGE_ROOTFS}/usr/share/snmp/snmpconf-data
