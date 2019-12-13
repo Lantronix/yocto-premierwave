@@ -1,8 +1,10 @@
 import zmq
 import time
 import sys
+import syslog
 import threading
 import socket, select, sys
+import syslog
 
 psocket=None
 ssocket=None
@@ -21,7 +23,6 @@ def check_ip(ip_addr):
     i=1
     while i < 4:
         tmp = int(oct[i])
-        print oct[i]
         if(tmp < 0 or tmp > 255):
             return 0
         else:
@@ -42,36 +43,34 @@ def check_url(url):
 def NetworkTxThread(host, port, protocol):
     global IsConnected
     global connection
-    print host, port, protocol
+    syslog.syslog(syslog.LOG_DEBUG, "network tx: "+host+":"+str(port)+","+protocol)
     ssocket.RCVTIMEO=1000
-    print "TX thread started"
     while IsConnected:
         try:
             msg = ssocket.recv()
         except zmq.Again as e:
             continue
         if msg and len(msg):
-            #print "tx:"+msg
+            #syslog.syslog(syslog.LOG_DEBUG, "tx:"+msg)
             try:
                 if protocol=="tcp":
                     connection.send(msg)
-            except socket.error, msg:
-                print "send error : %s" % msg
+            except socket.error as msg:
+                syslog.syslog(syslog.LOG_ERR, "send error : %s" % msg)
                 time.sleep(1)
 
 def NetworkRxThread(host, port, protocol):
     global IsConnected
     global connection
-    print host, port, protocol
+    syslog.syslog(syslog.LOG_DEBUG, "network rx: "+host+":"+str(port)+","+protocol)
     while IsConnected:
         if protocol=="tcp":
             msg = connection.recv(NETWORK_THRESHOLD_MAX)
         if not msg:
-            print "Disconnected"
+            syslog.syslog(syslog.LOG_WARNING, "Disconnected")
             IsConnected=False;
             break
         if msg and len(msg):
-            print "rx:"+msg
             psocket.send(msg)
 def main():
 
@@ -84,6 +83,7 @@ def main():
 
     length=len(sys.argv)
     if (length != 6):
+        syslog.syslog(syslog.LOG_ERR, "Invalid parameters")
         return 0
 
     i = 1 #0th parameter is file name
@@ -92,35 +92,35 @@ def main():
         if params[0] == "subscribe":
             res = check_url(params[1])
             if res==0:
-                print "Invalid URL"
+                syslog.syslog(syslog.LOG_ERR, "Invalid subscribe URL")
                 return res
             sub_path = params[1]
         elif params[0] == "ip":
             res = check_ip(params[1])
             if res==0:
-                print "Invalid IP"
+                syslog.syslog(syslog.LOG_ERR, "Invalid server IP")
                 return res
             REMOTE_HOST = params[1] #hostname or IP address
         elif params[0] == "port":
             try:
                 REMOTE_PORT = int(params[1])#PORT
             except ValueError:
-                print "Invalid port"
+                syslog.syslog(syslog.LOG_ERR, "Invalid port")
                 return 0
         elif params[0] == "protocol":
             res = check_protocol(params[1])
             if res==0:
-                print "Unsupported protocol"
+                syslog.syslog(syslog.LOG_ERR, "Unsupported protocol")
                 return res
             USING_PROTOCOL = params[1]#TCP, UDP
         elif params[0] == "publish":
             res = check_url(params[1])
             if res==0:
-                print "Invalid URL"
+                syslog.syslog(syslog.LOG_ERR, "Invalid publish URL")
                 return res
             pub_path = params[1]
         else:
-            print "Unknown parametrs"
+            syslog.syslog(syslog.LOG_WARNING, "Unknown parametrs")
         i=i+1
 
     while True:
@@ -135,9 +135,9 @@ def main():
             server_address = (REMOTE_HOST, REMOTE_PORT)
             s.bind(server_address)
             s.listen(1)
-            print "waiting for a connection"
+            syslog.syslog(syslog.LOG_DEBUG, "waiting for a connection")
             connection, client_address = s.accept()
-            print "client connected:", client_address
+            syslog.syslog(syslog.LOG_DEBUG, "client connected:", client_address)
 
         socket_list = [ s ]
         IsConnected = True
@@ -163,8 +163,8 @@ def main():
 
         try:
             s.shutdown(2)
-        except socket.error, msg:
-            print "Socket shutdown Error : %s" % msg
+        except socket.error as msg:
+            syslog.syslog(syslog.LOG_ERR, "Socket shutdown Error : %s" % msg)
 	connection.close()
         s.close()
 

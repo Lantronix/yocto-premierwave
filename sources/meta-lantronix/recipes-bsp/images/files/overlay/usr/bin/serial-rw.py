@@ -1,7 +1,8 @@
 import zmq
+import sys
 import time
 import serial
-import sys
+import syslog
 import threading
 
 comPort = None
@@ -18,18 +19,25 @@ def RxThread():
     while True:
         msg = ssocket.recv()
         if msg and len(msg)>0:
-            #print "tx:"+str(msg)
-            comPort.write(msg)
-            #print "tx-ed:"+str(msg)
-
+            try:
+                comPort.write(msg)
+            except:
+                if comPort.isOpen():
+                    comPort.close()
+                    time.sleep(2)
+                    comPort.open()
 
 def TxThread():
     while True:
-        msg = comPort.read(size=SERIAL_THRESHOLD_MAX)
-        if msg and len(msg)>0:
-            #print "rx:"+str(msg)
-            psocket.send(msg)
-
+        try:
+            msg = comPort.read(size=SERIAL_THRESHOLD_MAX)
+            if msg and len(msg)>0:
+                psocket.send(msg)
+        except:
+            if comPort.isOpen():
+                comPort.close()
+                time.sleep(2)
+                comPort.open()
 def main():
 
     global comPort
@@ -53,7 +61,7 @@ def main():
         if params[0] == "subscribe":
             res = check_url(params[1])
             if res==0:
-                print "Invalid URL"
+                syslog.syslog(syslog.LOG_ERR, "serial-rw.py: invalid subscribe URL")
                 return res
             sub_path = params[1]
         elif params[0] == "device":
@@ -73,32 +81,32 @@ def main():
         elif params[0] == "publish":
             res = check_url(params[1])
             if res==0:
-                print "Invalid URL"
+                syslog.syslog(syslog.LOG_ERR, "serial-rw.py: invalid publish URL")
                 return res
             pub_path =  params[1]
         else:
-            print "Unknown paramter"
+            syslog.syslog(syslog.LOG_WARNING, "serial-rw.py: Unhandled parameter")
         i = i + 1
 
     if pub_path=='' or sub_path=='' or serialport=='':
-        print "required subscriber, serialport and publish"
+        syslog.syslog(syslog.LOG_ERR, "serial-rw.py: subscriber, serialport and publish are required parameters")
         return 0
     if flowcontrol.lower()!="none" and \
        flowcontrol.lower()!="hardware" and \
        flowcontrol.lower()!="software":
-        print "provide valid flowcontrol"
+        syslog.syslog(syslog.LOG_ERR, "serial-rw.py: invalid valid flowcontrol")
         return 0
-    if bytesize not in range (7,9):
-        print "provide valid databits"
+    if bytesize not in [7,8]:
+        syslog.syslog(syslog.LOG_ERR, "serial-rw.py: invalid databits")
         return 0
-    if stopbits not in range (1,3):
-        print "provide valid stopbits"
+    if stopbits not in [1,2]:
+        syslog.syslog(syslog.LOG_ERR, "serial-rw.py: invalid stopbits")
         return 0
     if baudrate not in [300,600,1200,1800,2400,4800,7200,9600,14400,19200,38400,57600,115200,230400,460800,921600]:
-        print "provide valid baudrate"
+        syslog.syslog(syslog.LOG_ERR, "serial-rw.py: invalid baudrate")
         return 0
-    if parity not in ['N','O','E']: 
-        print "provide valid parity"
+    if parity not in ['N','O','E']:
+        syslog.syslog(syslog.LOG_ERR, "serial-rw.py: invalid parity")
         return 0
 
     while True:
@@ -122,10 +130,10 @@ def main():
             comPort.open()
             break
         except serial.SerialException:
-            print "Failed to open serial port"
+            syslog.syslog(syslog.LOG_ERR, "serial-rw.py: Failed to open serial port")
             time.sleep(1)
 
-    print "Opened serial port"
+    syslog.syslog(syslog.LOG_DEBUG, "serial-rw.py: Opened serial port ")
     pcontext = zmq.Context()
     psocket = pcontext.socket(zmq.PUB)
     psocket.bind(pub_path)

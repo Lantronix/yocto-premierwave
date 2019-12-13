@@ -1,13 +1,16 @@
-import array
-import json
-import subprocess
-import os
+import array, json, os
+import subprocess, sys
 import os.path
-import sys
+import re, time
+import syslog
 
 flow_file = sys.argv[1]
 os.chdir("/ltrx_user/")
 file1 = os.path.basename(flow_file)
+file_name = "/tmp/"+sys.argv[1]+".txt"
+file1 = open(file_name,"a")
+file1.truncate(0)
+
 with open(flow_file, 'r') as fp:
     obj = json.load(fp)
     try:
@@ -22,13 +25,18 @@ with open(flow_file, 'r') as fp:
             if os.path.isfile(script_file):
                 params = str(rec['parameters'])
                 cmd="PYTHONHOME=/usr/:/usr/ PYTHONPATH=/ltrx_user/python/lib/python2.7/site-packages/:/usr/lib/python2.7/site-packages/ PYTHONUNBUFFERED=y python "+script_file+" "+params+" &";
-                print "function "+str(i)+"cmd: "+cmd
-                os.system(cmd);
-                print "started input function "+str(i)
+                syslog.syslog(syslog.LOG_DEBUG, "function "+str(i)+"cmd: "+cmd)
+                os.system(cmd)
+                time.sleep(1)
+                s_string = script_file+" "+params
+                cmd1 = "ps -ef | grep '{0}' | grep -v grep".format(s_string)
+                out = subprocess.check_output(cmd1, shell=True)
+                file1.writelines(out)
+                syslog.syslog(syslog.LOG_DEBUG, "started input function "+str(i))
             else:
-                print "script ["+script_path+"] does not exist"
+                syslog.syslog(syslog.LOG_WARNING, "script ["+script_path+"] does not exist")
     except:
-        print "Either inputs section not present or issue with format"
+        syslog.syslog(syslog.ERR,"Either inputs section not present or issue with format")
     try:
         for i in range(0,len(obj['functions'])):
             rec=obj['functions'][i]
@@ -41,13 +49,18 @@ with open(flow_file, 'r') as fp:
             if os.path.isfile(script_file):
                 params = str(rec['parameters'])
                 cmd="PYTHONHOME=/usr/:/usr/ PYTHONPATH=/ltrx_user/python/lib/python2.7/site-packages/:/usr/lib/python2.7/site-packages/ PYTHONUNBUFFERED=y python "+script_file+" "+params+" &";
-                print "function "+str(i)+"cmd: "+cmd
+                syslog.syslog(syslog.LOG_DEBUG, "function "+str(i)+"cmd: "+cmd)
                 os.system(cmd);
-                print "started input function "+str(i)
+                time.sleep(1)
+                s_string = script_file+" "+params
+                cmd1 = "ps -ef | grep '{0}' | grep -v grep".format(s_string)
+                out = subprocess.check_output(cmd1, shell=True)
+                file1.writelines(out)
+                syslog.syslog(syslog.LOG_DEBUG, "started input function "+str(i))
             else:
-                print "script ["+script_path+"] does not exist"
+                syslog.syslog(syslog.LOG_WARNING, "script ["+script_path+"] does not exist")
     except:
-        print "Either functions section not present or issue with format"
+        syslog.syslog(syslog.LOG_ERR, "Either functions section not present or issue with format")
     try:
         for i in range(0,len(obj['outputs'])):
             rec=obj['outputs'][i]
@@ -60,10 +73,16 @@ with open(flow_file, 'r') as fp:
             if os.path.isfile(script_file):
                 params = str(rec['parameters'])
                 cmd="PYTHONHOME=/usr/:/usr/ PYTHONPATH=/ltrx_user/python/lib/python2.7/site-packages/:/usr/lib/python2.7/site-packages/ PYTHONUNBUFFERED=y python "+script_file+" "+params+" &";
-                print "function "+str(i)+"cmd: "+cmd
+                syslog.syslog(syslog.LOG_DEBUG,"function "+str(i)+"cmd: "+cmd)
                 os.system(cmd);
-                print "started output function "+str(i)
+                time.sleep(1)
+                s_string = script_file+" "+params
+                cmd1 = "ps -ef | grep '{0}' | grep -v grep".format(s_string)
+                out = subprocess.check_output(cmd1, shell=True)
+                file1.writelines(out)
+                syslog.syslog(syslog.LOG_DEBUG, "started output function "+str(i))
             else:
-                print "script ["+script_path+"] does not exist"
+                syslog.syslog(syslog.LOG_WARNING, "script ["+script_path+"] does not exist")
     except:
-        print "Either outputs section not present or issue with format"
+        syslog.syslog(syslog.ERR, "Either outputs section not present or issue with format")
+    file1.close()
