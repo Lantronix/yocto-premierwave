@@ -59,7 +59,7 @@ restart_l3_bridging()
     if [ -f $BRIDGE_CONF ]; then
         . $BRIDGE_CONF
         logger -p "user.debug" "restart_l3_bridging: interface: $THIS_IF, bridging: $BRIDGE_STATE ($BRIDGE_MODE), EXT_IF=$BRIDGE_WLANDEV"
-        if [ "$BRIDGE_STATE" = "enabled" -a "$BRIDGE_WLANDEV" = "$THIS_IF" -a "$BRIDGE_MODE" = "network" ]; then
+        if [[ "$BRIDGE_STATE" = "enabled" && ("$BRIDGE_WLANDEV" = "$THIS_IF" || "$BRIDGE_ETHDEV" = "$THIS_IF") && "$BRIDGE_MODE" = "network" ]]; then
             EXT_IP=$ASSIGNED_IPADDR
             EXT_IF=$BRIDGE_WLANDEV
             INT_IF=$BRIDGE_ETHDEV
@@ -89,7 +89,7 @@ restart_l3_bridging()
     logger -p "user.debug" "restart_l3_bridging: interface: $THIS_IF, forwarding: $FORWARDING_LAYER, assign $INT_IF, $EXT_IF: ($EXTIP_COUNT) $EXTIP_V4 IPv4 and $EXTIP_V6 IPv6 addresses"
     if [ "$EXT_IF" != "" -a "$INT_IF" != "" ]; then
         #begin protected section
-        if [ "$BOOTPROTO" != "static" ]; then
+        if [ "$BOOTPROTO" != "static" -a "$BRIDGE_WLANDEV" = "$THIS_IF" ]; then
             #use the same IP as the external IP for dhcprelay
             for addr in $(ip -4 addr show dev $INT_IF | grep inet | awk '{print $2}'); do
                 ip -4 addr del $addr dev $INT_IF
