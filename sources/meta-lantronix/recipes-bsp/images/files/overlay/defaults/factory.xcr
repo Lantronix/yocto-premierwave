@@ -33,9 +33,14 @@
            <value>set to default</value>
        </configitem>
        <configitem name = "reboot">
-           <value>enable</value>
+           <value>disable</value>
        </configitem>
-   </configgroup>
+    </configgroup>
+    <configgroup name = "mach10">
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+    </configgroup>
     <configgroup name = "bluetooth">
        <configitem name = "state">
            <value>disable</value>
@@ -223,100 +228,145 @@
           <value>&amp;#60;None&amp;#62;</value>
       </configitem>
     </configgroup>
-    <configgroup name = "line" instance = "1">
-       <configitem name = "name">
-           <value></value>
-       </configitem>
-       <configitem name = "interface">
-           <value>RS485 Half-Duplex</value>
-       </configitem>
-       <configitem name = "termination">
-           <value>disable</value>
-       </configitem>
-       <configitem name = "full duplex termination">
-           <value>Disabled</value>
-       </configitem>
-       <configitem name = "state">
-           <value>enable</value>
-       </configitem>
-       <configitem name = "protocol">
-           <value>None</value>
-       </configitem>
-       <configitem name = "baud rate">
-           <value>115200 bits per second</value>
-       </configitem>
-       <configitem name = "parity">
-           <value>None</value>
-       </configitem>
-       <configitem name = "data bits">
-           <value>8</value>
-       </configitem>
-       <configitem name = "stop bits">
-           <value>1</value>
-       </configitem>
-       <configitem name = "flow control">
-           <value>None</value>
-       </configitem>
-       <configitem name = "xon char">
-           <value>&amp;#60;control&amp;#62;Q</value>
-       </configitem>
-       <configitem name = "xoff char">
-           <value>&amp;#60;control&amp;#62;S</value>
-       </configitem>
-       <configitem name = "gap timer">
-           <value>&amp;#60;None&amp;#62;</value>
-       </configitem>
-       <configitem name = "threshold">
-           <value>56 bytes</value>
-       </configitem>
-   </configgroup>
-   <configgroup name = "line" instance = "2">
-       <configitem name = "name">
-           <value></value>
-       </configitem>
-       <configitem name = "interface">
-           <value>RS485 Half-Duplex</value>
-       </configitem>
-       <configitem name = "termination">
-           <value>disable</value>
-       </configitem>
-       <configitem name = "full duplex termination">
-           <value>Disabled</value>
-       </configitem>
-       <configitem name = "state">
-           <value>enable</value>
-       </configitem>
-       <configitem name = "protocol">
-           <value>None</value>
-       </configitem>
-       <configitem name = "baud rate">
-           <value>115200 bits per second</value>
-       </configitem>
-       <configitem name = "parity">
-           <value>None</value>
-       </configitem>
-       <configitem name = "data bits">
-           <value>8</value>
-       </configitem>
-       <configitem name = "stop bits">
-           <value>1</value>
-       </configitem>
-       <configitem name = "flow control">
-           <value>None</value>
-       </configitem>
-       <configitem name = "xon char">
-           <value>&amp;#60;control&amp;#62;Q</value>
-       </configitem>
-       <configitem name = "xoff char">
-           <value>&amp;#60;control&amp;#62;S</value>
-       </configitem>
-       <configitem name = "gap timer">
-           <value>&amp;#60;None&amp;#62;</value>
-       </configitem>
-       <configitem name = "threshold">
-           <value>56 bytes</value>
-       </configitem>
-    </configgroup>    <configgroup name = "wlan profile" instance = "default_infrastructure_profile">
+    <configgroup name = "line" instance = "1">
+       <configitem name = "name">
+           <value></value>
+       </configitem>
+       <configitem name = "interface">
+           <value>RS485 Half-Duplex</value>
+       </configitem>
+       <configitem name = "termination">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "full duplex termination">
+           <value>Disabled</value>
+       </configitem>
+       <configitem name = "state">
+           <value>enable</value>
+       </configitem>
+       <configitem name = "protocol">
+           <value>None</value>
+       </configitem>
+       <configitem name = "baud rate">
+           <value>115200 bits per second</value>
+       </configitem>
+       <configitem name = "parity">
+           <value>None</value>
+       </configitem>
+       <configitem name = "data bits">
+           <value>8</value>
+       </configitem>
+       <configitem name = "stop bits">
+           <value>1</value>
+       </configitem>
+       <configitem name = "flow control">
+           <value>None</value>
+       </configitem>
+       <configitem name = "xon char">
+           <value>&amp;#60;control&amp;#62;Q</value>
+       </configitem>
+       <configitem name = "xoff char">
+           <value>&amp;#60;control&amp;#62;S</value>
+       </configitem>
+       <configitem name = "gap timer">
+           <value>&amp;#60;None&amp;#62;</value>
+       </configitem>
+       <configitem name = "threshold">
+           <value>56 bytes</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "line" instance = "2">
+       <configitem name = "name">
+           <value></value>
+       </configitem>
+       <configitem name = "interface">
+           <value>RS485 Half-Duplex</value>
+       </configitem>
+       <configitem name = "termination">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "full duplex termination">
+           <value>Disabled</value>
+       </configitem>
+       <configitem name = "state">
+           <value>enable</value>
+       </configitem>
+       <configitem name = "protocol">
+           <value>None</value>
+       </configitem>
+       <configitem name = "baud rate">
+           <value>115200 bits per second</value>
+       </configitem>
+       <configitem name = "parity">
+           <value>None</value>
+       </configitem>
+       <configitem name = "data bits">
+           <value>8</value>
+       </configitem>
+       <configitem name = "stop bits">
+           <value>1</value>
+       </configitem>
+       <configitem name = "flow control">
+           <value>None</value>
+       </configitem>
+       <configitem name = "xon char">
+           <value>&amp;#60;control&amp;#62;Q</value>
+       </configitem>
+       <configitem name = "xoff char">
+           <value>&amp;#60;control&amp;#62;S</value>
+       </configitem>
+       <configitem name = "gap timer">
+           <value>&amp;#60;None&amp;#62;</value>
+       </configitem>
+       <configitem name = "threshold">
+           <value>56 bytes</value>
+       </configitem>
+    </configgroup>
+    <configgroup name = "usb line" instance = "3">
+       <configitem name = "name">
+           <value></value>
+       </configitem>
+       <configitem name = "interface">
+           <value>USB-CDC-ACM</value>
+       </configitem>
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "protocol">
+           <value>None</value>
+       </configitem>
+       <configitem name = "baud rate">
+           <value>115200 bits per second</value>
+       </configitem>
+       <configitem name = "parity">
+           <value>None</value>
+       </configitem>
+       <configitem name = "data bits">
+           <value>8</value>
+       </configitem>
+       <configitem name = "stop bits">
+           <value>1</value>
+       </configitem>
+       <configitem name = "flow control">
+           <value>Hardware</value>
+       </configitem>
+       <configitem name = "xon char">
+           <value>&amp;#60;control&amp;#62;Q</value>
+       </configitem>
+       <configitem name = "xoff char">
+           <value>&amp;#60;control&amp;#62;S</value>
+       </configitem>
+       <configitem name = "gap timer">
+           <value>&amp;#60;None&amp;#62;</value>
+       </configitem>
+       <configitem name = "threshold">
+           <value>56 bytes</value>
+       </configitem>
+       <configitem name = "line mode">
+           <value>Serial Device</value>
+       </configitem>
+    </configgroup>
+    <configgroup name = "wlan profile" instance = "default_infrastructure_profile">
        <configitem name = "profile type">
            <value>User Defined</value>
        </configitem>
