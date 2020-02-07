@@ -132,12 +132,13 @@ def main():
 
         if USING_PROTOCOL.lower()=="tcp":
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server_address = (REMOTE_HOST, REMOTE_PORT)
             s.bind(server_address)
             s.listen(1)
             syslog.syslog(syslog.LOG_DEBUG, "waiting for a connection")
             connection, client_address = s.accept()
-            syslog.syslog(syslog.LOG_DEBUG, "client connected:", client_address)
+            syslog.syslog(syslog.LOG_DEBUG, "client connected:"+ str(client_address))
 
         socket_list = [ s ]
         IsConnected = True

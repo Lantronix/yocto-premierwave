@@ -24,19 +24,19 @@ with open(flow_file, 'r') as fp:
                 script_file = "/usr/bin/"+file_name
             if os.path.isfile(script_file):
                 params = str(rec['parameters'])
-                cmd="PYTHONHOME=/usr/:/usr/ PYTHONPATH=/ltrx_user/python/lib/python2.7/site-packages/:/usr/lib/python2.7/site-packages/ PYTHONUNBUFFERED=y python "+script_file+" "+params+" &";
+                cmd=". /etc/pythonenv; python "+script_file+" "+params+" &";
                 syslog.syslog(syslog.LOG_DEBUG, "function "+str(i)+"cmd: "+cmd)
                 os.system(cmd)
                 time.sleep(1)
                 s_string = script_file+" "+params
                 cmd1 = "ps -ef | grep '{0}' | grep -v grep".format(s_string)
-                out = subprocess.check_output(cmd1, shell=True)
-                file1.writelines(out)
+                out = subprocess.getoutput(cmd1)
+                file1.writelines(str(out)+'\n')
                 syslog.syslog(syslog.LOG_DEBUG, "started input function "+str(i))
             else:
                 syslog.syslog(syslog.LOG_WARNING, "script ["+script_path+"] does not exist")
     except:
-        syslog.syslog(syslog.ERR,"Either inputs section not present or issue with format")
+        syslog.syslog(syslog.LOG_ERR,"Either inputs section not present or issue with format")
     try:
         for i in range(0,len(obj['functions'])):
             rec=obj['functions'][i]
@@ -48,14 +48,14 @@ with open(flow_file, 'r') as fp:
                 script_file = "/usr/bin/"+file_name
             if os.path.isfile(script_file):
                 params = str(rec['parameters'])
-                cmd="PYTHONHOME=/usr/:/usr/ PYTHONPATH=/ltrx_user/python/lib/python2.7/site-packages/:/usr/lib/python2.7/site-packages/ PYTHONUNBUFFERED=y python "+script_file+" "+params+" &";
+                cmd=". /etc/pythonenv; python "+script_file+" "+params+" &";
                 syslog.syslog(syslog.LOG_DEBUG, "function "+str(i)+"cmd: "+cmd)
                 os.system(cmd);
                 time.sleep(1)
                 s_string = script_file+" "+params
                 cmd1 = "ps -ef | grep '{0}' | grep -v grep".format(s_string)
-                out = subprocess.check_output(cmd1, shell=True)
-                file1.writelines(out)
+                out = subprocess.getoutput(cmd1)
+                file1.writelines(str(out)+'\n')
                 syslog.syslog(syslog.LOG_DEBUG, "started input function "+str(i))
             else:
                 syslog.syslog(syslog.LOG_WARNING, "script ["+script_path+"] does not exist")
@@ -72,17 +72,17 @@ with open(flow_file, 'r') as fp:
                 script_file = "/usr/bin/"+file_name
             if os.path.isfile(script_file):
                 params = str(rec['parameters'])
-                cmd="PYTHONHOME=/usr/:/usr/ PYTHONPATH=/ltrx_user/python/lib/python2.7/site-packages/:/usr/lib/python2.7/site-packages/ PYTHONUNBUFFERED=y python "+script_file+" "+params+" &";
+                cmd=". /etc/pythonenv; python "+script_file+" "+params+" &";
                 syslog.syslog(syslog.LOG_DEBUG,"function "+str(i)+"cmd: "+cmd)
                 os.system(cmd);
                 time.sleep(1)
                 s_string = script_file+" "+params
                 cmd1 = "ps -ef | grep '{0}' | grep -v grep".format(s_string)
-                out = subprocess.check_output(cmd1, shell=True)
-                file1.writelines(out)
+                out = subprocess.getoutput(cmd1)
+                file1.writelines(str(out)+'\n')
                 syslog.syslog(syslog.LOG_DEBUG, "started output function "+str(i))
             else:
                 syslog.syslog(syslog.LOG_WARNING, "script ["+script_path+"] does not exist")
     except:
-        syslog.syslog(syslog.ERR, "Either outputs section not present or issue with format")
+        syslog.syslog(syslog.LOG_ERR, "Either outputs section not present or issue with format")
     file1.close()
