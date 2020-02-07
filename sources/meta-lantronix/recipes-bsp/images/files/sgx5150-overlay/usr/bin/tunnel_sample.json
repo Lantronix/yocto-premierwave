@@ -1,0 +1,20 @@
+{
+"name": "Tunnel Accept",
+"description": "Accept network connection - tunnel serial and network data",
+"inputs": [{
+ "name": "Serial data handler",
+ "description": "Read and write data on serial port",
+ "id": 1,
+ "script path": "serial.py",
+ "parameters": "subscribe=tcp://localhost:8000 device=ttyS1 baud=115200 parity=None dataBits=8 stopBits=1 publish=tcp://localhost:8001",
+ "next": [2]
+}],
+"outputs": [{
+ "name": "Network Accept",
+ "description": "Read and write data to network",
+ "id": 2,
+ "script path": "accept_network.py",
+ "parameters": "subscribe=tcp://localhost:8001 device=ttyS1 acceptPort=10001 protocol=tcp publish=tcp://localhost:8000",
+ "next": []
+}]
+}
