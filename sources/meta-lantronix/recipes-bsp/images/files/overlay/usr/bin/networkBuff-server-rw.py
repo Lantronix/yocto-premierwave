@@ -217,7 +217,7 @@ def main():
             s.shutdown(2)
         except socket.error as msg:
             syslog.syslog(syslog.LOG_ERR, "Socket shutdown Error : %s" % msg)
-	connection.close()
+        connection.close()
         s.close()
 
         psocket.close()
