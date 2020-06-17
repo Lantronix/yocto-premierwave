@@ -140,6 +140,6 @@ rssicorrnorm5g_c0=-3,0,-3,-4,0,-3,-4,-2,-4,-4,-2,-4
 paparambwver=1
 AvVmid_c0=2,155,3,116,3,118,3,126,3,126
 #ED threshold level to address the new ETSI requirement
-ed_threshold2g=-77
-ed_threshold5g=-77
+ed_threshold2g=-69
+ed_threshold5g=-74
 
