@@ -29,6 +29,15 @@ else
     BRIDGE_WLANDEV="wlan0"
 fi
 
+function prefix_by_netmask ()
+{
+   c=0 x=0$( printf '%o' ${1//./ } )
+   while [ $x -gt 0 ]; do
+       let c+=$((x%2)) 'x>>=1'
+   done
+   return $c ;
+}
+
 case "$1" in
 
     leasefail)
@@ -37,7 +46,7 @@ case "$1" in
         ;;
 
     deconfig)
-        /sbin/ifconfig $interface 0.0.0.0
+        /sbin/ifconfig ${interface} 0.0.0.0
         rm -f /etc/sysconfig/dhcp_ip_${interface}
         ;;
 
@@ -65,15 +74,15 @@ case "$1" in
         /sbin/ifconfig $interface $ip $BROADCAST_ARG $NETMASK_ARG
         #handle newline in routes
         IFS=$'\n'
-        routes=`route -n | grep ${interface}`
+        routes=`ip route show dev ${interface}`
         for route in ${routes}
         do
             naddress=`echo ${route} | awk -F' ' '{print $1}'`
-            nmetric=`echo ${route} | awk -F' ' '{print $5}'`
             #skip the default route and static routes if any
-            if [ "$naddress" != "0.0.0.0" -a $nmetric -lt 100 ] ; then
-                route del -net ${naddress} netmask ${subnet} dev ${interface}
-                route add -net ${naddress} netmask ${subnet} dev ${interface} metric ${metric}
+            if [ "$naddress" != "default" ] ; then
+                ip route delete ${naddress} dev ${interface}
+                ip route add ${naddress} dev ${interface} metric ${metric} src $ip
+                logger -p "user.debug" "ip r change $$ : ip route change ${naddress} dev ${interface} metric ${metric} src $ip"
             fi
         done
         unset IFS
@@ -93,6 +102,36 @@ case "$1" in
             echo $nameserver >> $DNS_CONF
         done
         sync
+        ###########################
+        # Default route.
+        ###########################
+        metric=`ltrx_getifinfo GETMETRIC ${interface} 1`
+        IF_GW=""
+        DHCP_ROUTER=""
+        GATEWAY=""
+        # Source the dhcp_router file if it exists
+        if [ -f /etc/sysconfig/dhcp_router_${interface} ]; then
+            . /etc/sysconfig/dhcp_router_${interface}
+        fi
+        . /etc/sysconfig/network_${interface}
+        # Set the default gateway
+        if [ -n "${DHCP_ROUTER}" ]; then
+            IF_GW=${DHCP_ROUTER}
+            it="ip route replace default via ${IF_GW} dev ${interface} metric ${metric} src $ip"
+        elif [ -n "${GATEWAY}" ]; then
+            IF_GW=${GATEWAY}
+            it="ip route replace default via ${IF_GW} dev ${interface} metric  ${metric} src $ip"
+        else
+            IF_GW=""
+            it="ip route add default dev ${interface} metric ${metric} src $ip"
+        fi
+        logger -p "user.debug" "dhcp-script ${interface} add route: ${it}"
+        st=0
+        oops="`eval $it 2>&1`"
+        st=$?
+        if [ " $oops" != " " -o " $st" != " 0" ]; then
+           logger -p "user.error" "dhcp-script ${interface} add route failed: ${oops}"
+        fi
         #run network script to update resolv.conf and routes etc.
         . $LTRX_NET_COMMON
         ltrx_start_network ${interface}
@@ -100,6 +139,20 @@ case "$1" in
         restart_l3_bridging ${interface} $ip
         logger -p "user.debug" "Unsolicited ARP mode, update your neighbors $$ : ${interface} $ip"
         arping -I $interface -U $ip -c1
+        #add virtual IP to WAN interface
+        if [ -f /etc/sysconfig/network-scripts/ifcfg-vlan0 ]; then
+            . /etc/sysconfig/network-scripts/ifcfg-vlan0
+            if [ "$ONBOOT" == "yes" -a "$WAN_IF" == "${interface}" ]; then
+                for vip in `seq 0 $VIRTUAL_IPV4_ENTRIES`
+                do
+                    if [ "$( eval "echo \${VIRTUAL_IPV4_$vip}" )" != "" ]; then
+                        ip addr add $( eval "echo \${VIRTUAL_IPV4_$vip}" )/32 dev ${interface}
+                        logger -p "user.debug" "Unsolicited ARP mode, update your neighbors $$ : ${interface} $( eval "echo \${VIRTUAL_IPV4_$vip}" )"
+                        arping -I $interface -U $( eval "echo \${VIRTUAL_IPV4_$vip}" ) -c1
+                    fi
+                done
+            fi
+        fi
         ;;
 esac
 
