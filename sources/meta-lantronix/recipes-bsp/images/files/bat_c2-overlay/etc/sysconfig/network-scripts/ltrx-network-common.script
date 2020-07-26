@@ -52,6 +52,10 @@ restart_l3_bridging()
                 fi
             fi
             logger -p "user.debug" "restart_l3_bridging: DHCP_RELAY_MODE: $DHCP_RELAY_MODE, DHCP_SERVER_IP: $DHCP_SERVER_IP"
+            # clear out connection tracking
+            # GGT-701 BAT-C2/PW2050 with NAT, packets not masqueraded when WLAN link is reconnected
+            logger -p "user.debug" "restart_l3_bridging:Gateway mode?, clear connection tracking $$ : ${interface} $ip"
+            conntrack -F conntrack
         fi
     fi
     #bridging WLAN interface
@@ -66,6 +70,14 @@ restart_l3_bridging()
             local ETH_CONF=/etc/sysconfig/network-scripts/ifcfg-$BRIDGE_ETHDEV
             if [ -f $ETH_CONF ]; then
                 . $ETH_CONF
+            else
+                #maybe this is wl0.1 -> use the ethernet configuration
+                logger -p "user.debug" "restart_l3_bridging: $ETH_CONF not found"
+                ETH_CONF=/etc/sysconfig/network-scripts/ifcfg-$BRIDGE_WLANDEV
+                logger -p "user.debug" "restart_l3_bridging: use $ETH_CONF"
+                if [ -f $ETH_CONF ]; then
+                    . $ETH_CONF
+                fi
             fi
             logger -p "user.debug" "restart_l3_bridging: ACTIVE interface: $THIS_IF, bridging: $BRIDGE_STATE, EXT_IF=$BRIDGE_WLANDEV, INT_IF=$INT_IF, BOOTPROTO: [$BOOTPROTO]"
             FORWARDING_LAYER="2"
@@ -89,7 +101,7 @@ restart_l3_bridging()
     logger -p "user.debug" "restart_l3_bridging: interface: $THIS_IF, forwarding: $FORWARDING_LAYER, assign $INT_IF, $EXT_IF: ($EXTIP_COUNT) $EXTIP_V4 IPv4 and $EXTIP_V6 IPv6 addresses"
     if [ "$EXT_IF" != "" -a "$INT_IF" != "" ]; then
         #begin protected section
-        if [ "$BOOTPROTO" != "static" -a "$BRIDGE_WLANDEV" = "$THIS_IF" ]; then
+        if [[ ( "$INT_IF" == "wl0.1" || "$BOOTPROTO" != "static" ) && "$BRIDGE_WLANDEV" == "$THIS_IF" ]]; then
             #use the same IP as the external IP for dhcprelay
             for addr in $(ip -4 addr show dev $INT_IF | grep inet | awk '{print $2}'); do
                 ip -4 addr del $addr dev $INT_IF
@@ -269,21 +281,10 @@ ltrx_start_network() {
                         # Set the default gateway
                         if [ -n "${DHCP_ROUTER}" ]; then
                             IF_GW=${DHCP_ROUTER}
-                            it="ip route replace default via ${IF_GW} dev ${interface} metric ${metric}"
                         elif [ -n "${GATEWAY}" ]; then
                             IF_GW=${GATEWAY}
-                            it="ip route replace default via ${IF_GW} dev ${interface} metric  ${metric}"
                         else
                             IF_GW=""
-                            it="ip route add default dev ${interface} metric ${metric}"
-                        fi
-                        st=0
-                        oops="`eval $it 2>&1`"
-                        st=$?
-                        if [ " $oops" != " " -o " $st" != " 0" ]; then
-                           logger -p "user.debug" "ltrx_start_network add route failed: ${interface}"
-                           logger -p "user.debug" "ltrx_start_network add route failed: ${it}"
-                           logger -p "user.debug" "ltrx_start_network add route failed: ${oops}"
                         fi
                         echo "ACTIVE_GATEWAY=${IF_GW}" > ${IF_GW_FILE}
                         if [ "$ACTIVEGW" == "" ]; then

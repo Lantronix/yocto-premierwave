@@ -179,6 +179,8 @@ if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_ETHDEV -a $TRANSPARENT = "disabled" -
         for addr in $(ip -4 addr show dev $IFCNAME | grep inet | awk '{print $2}'); do
             ip -4 addr del $addr dev $IFCNAME
         done
+        #wl0.1 <-> eth0 bridging runs dnsmasq. for dnsmasq to assign IP address it should not be a host address
+        #this somehow works for IPv4
         for addr in $(ip -4 addr show dev $BRIDGE_WLANDEV | grep inet | awk '{print $2}' | awk -F'/' '{print $1}'); do
             logger -p "user.debug" "ifstart: assign $IFCNAME IP: $addr"
             ip -4 addr add $addr/32 dev $IFCNAME
@@ -186,10 +188,18 @@ if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_ETHDEV -a $TRANSPARENT = "disabled" -
         for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
             ip -6 addr del $addr dev $IFCNAME scope global
         done
-        for addr in $(ip -6 addr show dev $BRIDGE_WLANDEV scope global | grep inet6 | awk '{print $2}'  | awk -F'/' '{print $1}'); do
-            logger -p "user.debug" "ifstart: assign $IFCNAME IP: $addr"
-            ip -6 addr add $addr/128 dev $IFCNAME scope global
-        done
+        if [ "$BRIDGE_WLANDEV" != "wl0.1" ]; then
+            for addr in $(ip -6 addr show dev $BRIDGE_WLANDEV scope global | grep inet6 | awk '{print $2}'  | awk -F'/' '{print $1}'); do
+                logger -p "user.debug" "ifstart: assign $IFCNAME IP: $addr"
+                ip -6 addr add $addr/128 dev $IFCNAME scope global
+            done
+        else
+            #wl0.1 <-> eth0 bridging runs dnsmasq. for dnsmasq to assign IP address it should not be a host address
+            for addr in $(ip -6 addr show dev $BRIDGE_WLANDEV scope global | grep inet6 | awk '{print $2}'); do
+                logger -p "user.debug" "ifstart: assign $IFCNAME IP: $addr"
+                ip -6 addr add $addr dev $IFCNAME scope global
+            done
+        fi
         rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
         exit 0
     fi
@@ -228,6 +238,9 @@ if [ "$IPV4" = "yes" ] ; then
     if [ "$BOOTPROTO" = "static" ] ; then
         if [ -n "$IPADDR" ] && [ "$IPADDR" != "0.0.0.0" ] ; then
             metric=`ltrx_getifinfo GETMETRIC ${IFCNAME} 0`
+            if [ -e /tmp/.duplicate_ip_detected.$IFCNAME ]; then
+                sed -i '/$IPADDR/d' /tmp/.duplicate_ip_detected.$IFCNAME
+            fi
             ifconfig $IFCNAME $IPADDR netmask $NETMASK up
             if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_WLANDEV ] ; then
                 rm -f /ltrx_private/bridged_network
@@ -251,19 +264,18 @@ if [ "$IPV4" = "yes" ] ; then
             fi
             #handle newline in routes
             IFS=$'\n'
-            routes=`route -n | grep ${IFCNAME}`
+            routes=`ip route show dev ${IFCNAME}`
             for route in ${routes}
             do
                 naddress=`echo ${route} | awk -F' ' '{print $1}'`
-                nmetric=`echo ${route} | awk -F' ' '{print $5}'`
                 #skip the default route and static routes if any
-                if [ "$naddress" != "0.0.0.0" -a $nmetric -lt 100 ] ; then
-                    route del -net ${naddress} netmask ${NETMASK} dev ${IFCNAME}
-                    route add -net ${naddress} netmask ${NETMASK} dev ${IFCNAME} metric ${metric}
+                if [ "$naddress" != "default" ] ; then
+                    ip route delete ${naddress} dev ${IFCNAME}
+                    ip route add ${naddress} dev ${IFCNAME} metric ${metric} src $IPADDR
+                    logger -p "user.debug" "ip r change $$ : ip route change ${naddress} dev ${IFCNAME} metric ${metric} src $IPADDR"
                 fi
             done
             unset IFS
-            arping -I $IFCNAME -U $IPADDR -c1
             if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_ETHDEV ] ; then
                 if [ -e /tmp/bripaddress ] ; then
                     . /tmp/bripaddress
@@ -291,11 +303,79 @@ if [ "$IPV4" = "yes" ] ; then
                     IFS=$OLDIFS
                 fi
             fi
+            ###########################
+            # Default route.
+            ###########################
+            metric=`ltrx_getifinfo GETMETRIC $IFCNAME 1`
+            IF_GW=""
+            DHCP_ROUTER=""
+            GATEWAY=""
+            # Source the dhcp_router file if it exists
+            if [ -f /etc/sysconfig/dhcp_router_$IFCNAME ]; then
+                . /etc/sysconfig/dhcp_router_$IFCNAME
+            fi
+            . /etc/sysconfig/network_$IFCNAME
+            # Set the default gateway
+            if [ -n "${DHCP_ROUTER}" ]; then
+                IF_GW=${DHCP_ROUTER}
+                it="ip route replace default via ${IF_GW} dev $IFCNAME metric ${metric} src $IPADDR"
+            elif [ -n "${GATEWAY}" ]; then
+                IF_GW=${GATEWAY}
+                it="ip route replace default via ${IF_GW} dev $IFCNAME metric  ${metric} src $IPADDR"
+            else
+                IF_GW=""
+                it="ip route add default dev $IFCNAME metric ${metric} src $IPADDR"
+            fi
+            logger -p "user.debug" "dhcp-script $IFCNAME add route: ${it}"
+            st=0
+            oops="`eval $it 2>&1`"
+            st=$?
+            if [ " $oops" != " " -o " $st" != " 0" ]; then
+               logger -p "user.error" "dhcp-script $IFCNAME add route failed: ${oops}"
+            fi
             #run network script to update resolv.conf and routes etc.
             . $LTRX_NET_COMMON
             ltrx_start_network $IFCNAME
+            logger -p "user.debug" "EXEC restart_l3_bridging $$ : $IFCNAME $IPADDR"
             restart_l3_bridging $IFCNAME $IPADDR
+            logger -p "user.debug" "Unsolicited ARP mode, update your neighbors $$ : $IFCNAME $IPADDR"
+            arping -D -I $IFCNAME -c 2 -U $IPADDR
+            if [ "$DUPLICATEIPDETECTION" = "yes" ]; then
+                if [ $? -eq 1 ]; then
+                    logger -p "user.err" "ifstart: Duplicate IP detected $IFCNAME:$IPADDR"
+                    echo $IPADDR >> /tmp/.duplicate_ip_detected.$IFCNAME
+                    #ip addr del $IPADDR dev $IFCNAME
+                fi
+            fi
+            #add virtual IP to WAN interface
+            if [ -f /etc/sysconfig/network-scripts/ifcfg-vlan0 ]; then
+                . /etc/sysconfig/network-scripts/ifcfg-vlan0
+                if [ "$ONBOOT" == "yes" -a "$WAN_IF" == "$IFCNAME" ]; then
+                    for vip in `seq 0 $VIRTUAL_IPV4_ENTRIES`
+                    do
+                        if [ "$( eval "echo \${VIRTUAL_IPV4_$vip}" )" != "" ]; then
+                            ip addr add $( eval "echo \${VIRTUAL_IPV4_$vip}" )/32 dev $IFCNAME
+                            logger -p "user.debug" "Unsolicited ARP mode, update your neighbors $$ : $IFCNAME $( eval "echo \${VIRTUAL_IPV4_$vip}" )"
+                            arping -D -I $IFCNAME -c 2 -U $( eval "echo \${VIRTUAL_IPV4_$vip}" )
+                        fi
+                    done
+                fi
+            fi
         else
+            #add virtual IP to WAN interface
+            if [ -f /etc/sysconfig/network-scripts/ifcfg-vlan0 ]; then
+                . /etc/sysconfig/network-scripts/ifcfg-vlan0
+                if [ "$ONBOOT" == "yes" -a "$WAN_IF" == "$IFCNAME" ]; then
+                    for vip in `seq 0 $VIRTUAL_IPV4_ENTRIES`
+                    do
+                        if [ "$( eval "echo \${VIRTUAL_IPV4_$vip}" )" != "" ]; then
+                            ip addr add $VIRTUAL_IPV4_${vip}/32 dev $IFCNAME
+                            logger -p "user.debug" "Unsolicited ARP mode, update your neighbors $$ : $IFCNAME $( eval "echo \${VIRTUAL_IPV4_$vip}" )"
+                            arping -D -I $IFCNAME -c 2 -U $( eval "echo \${VIRTUAL_IPV4_$vip}" )
+                        fi
+                    done
+                fi
+            fi
             /sbin/start_autoipd $IFCNAME 0 &
         fi
     elif [ "$BOOTPROTO" = "dhcp" ] || [ "$BOOTPROTO" = "bootp" ] ; then
@@ -373,6 +453,7 @@ else
 fi
 #running network script may change global variables
 #reference: 27346
+IPV6ADDR=""
 . $IFCFILE
 if [ "$IPV6" = "yes" ] ; then
     if [ "$AUTOCONFIGURE" = "yes" ] ; then
@@ -423,7 +504,19 @@ if [ "$IPV6" = "yes" ] ; then
             for addr in $(ip -6 addr show dev $IFCNAME scope global | grep inet6 | awk '{print $2}'); do
                 ip -6 addr del $addr dev $IFCNAME scope global
             done
+            if [ -e /tmp/.duplicate_ip_detected.$IFCNAME ]; then
+                sed -i '/$IPV6ADDR/d' /tmp/.duplicate_ip_detected.$IFCNAME
+            fi
             ip -6 addr add $IPV6ADDR dev $IFCNAME scope global
+            if [ "$DUPLICATEIPDETECTION" = "yes" ]; then
+                sleep 2
+                ip -6 route list table local 2>/dev/null | grep -q `echo $IPV6ADDR | awk -F'/' '{print $1}'`
+                if [ $? -eq 1 ]; then
+                    logger -p "user.err" "ifstart: Duplicate IPv6 address detected $IFCNAME:$IPV6ADDR"
+                    echo $IPV6ADDR >> /tmp/.duplicate_ip_detected.$IFCNAME
+                    #ip -6 addr del $IPV6ADDR dev $IFCNAME scope global
+                fi
+            fi
             if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_ETHDEV ] ; then
                 if [ -e /tmp/bripv6address ] ; then
                     . /tmp/bripv6address
@@ -475,6 +568,18 @@ if [ "$IPV6" = "yes" ] ; then
                 (-e /tmp/bridging.active && "$IFCNAME" != "$BRIDGE_WLANDEV") ||
                 (-e /tmp/bridging.active && "$IFCNAME" = "$BRIDGE_WLANDEV" && ("$BRIDGE_TRANSPARENT" = "disabled" || "$BRIDGE_NETWORKACCESS" = "enabled")) ]]; then
             dhcp6c -c /etc/wide-dhcpv6/client_$IFCNAME.conf -p /var/run/dhcp6.$IFCNAME.pid $IFCNAME &
+        fi
+        #add virtual IP to WAN interface
+        if [ -f /etc/sysconfig/network-scripts/ifcfg-vlan0 ]; then
+            . /etc/sysconfig/network-scripts/ifcfg-vlan0
+            if [ "$ONBOOT" == "yes" -a "$WAN_IF" == "$IFCNAME" ]; then
+                for vip in `seq 0 $VIRTUAL_IPV6_ENTRIES`
+                do
+                    if [ "$( eval "echo \${VIRTUAL_IPV6_$vip}" )" != "" ]; then
+                        ip -6 neigh add proxy $( eval "echo \${VIRTUAL_IPV6_$vip}" ) dev $IFCNAME
+                    fi
+                done
+            fi
         fi
     else
         logger -p "user.err" "ifstart: invalid ipv6 boot protocol $BOOTPROTO6"
