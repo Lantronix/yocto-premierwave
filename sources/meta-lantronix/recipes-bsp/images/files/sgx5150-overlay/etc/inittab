@@ -19,6 +19,9 @@ null::sysinit:/bin/mount -o remount,sync,ro /
 null::sysinit:/bin/mkdir -p /dev/pts
 null::sysinit:/bin/mount -a
 null::sysinit:/bin/mount -o remount,size=64M /tmp
+
+null::sysinit:/bin/ltrx_as > /dev/null 2>&1 &
+
 null::sysinit:/bin/echo > /dev/mdev.seq
 null::sysinit:/sbin/sysctl -w kernel.hotplug=/sbin/mdev
 null::sysinit:/sbin/mdev -s
@@ -86,7 +89,6 @@ null::sysinit:/bin/echo 10 > /proc/sys/kernel/panic
 # Start Lantronix processes
 null::sysinit:/bin/ltrx_cmdproxy &
 null::sysinit:/bin/ltrx_cfg > /dev/null 2>&1 &
-null::sysinit:/bin/ltrx_as > /dev/null 2>&1 &
 null::sysinit:/bin/netman &
 
 # Put a getty on the serial port
