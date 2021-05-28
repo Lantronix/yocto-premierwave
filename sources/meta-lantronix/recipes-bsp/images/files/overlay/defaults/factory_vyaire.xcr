@@ -1,0 +1,176 @@
+<?xml version="1.0" standalone="yes"?>
+<!-- Automatically generated XML -->
+<!DOCTYPE configrecord [
+   <!ELEMENT configrecord (configgroup+)>
+   <!ELEMENT configgroup (configitem+,configgroup*)>
+   <!ELEMENT configitem (value+)>
+   <!ELEMENT value (#PCDATA)>
+   <!ATTLIST configrecord version CDATA #IMPLIED>
+   <!ATTLIST configgroup name CDATA #IMPLIED>
+   <!ATTLIST configgroup instance CDATA #IMPLIED>
+   <!ATTLIST configitem name CDATA #IMPLIED>
+   <!ATTLIST configitem instance CDATA #IMPLIED>
+   <!ATTLIST value name CDATA #IMPLIED>
+]>
+<configrecord version = "0.1.0.0T0">
+   <configgroup name = "ftp server">
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "port">
+           <value>21 </value>
+       </configitem>
+       <configitem name = "data port">
+           <value>20 </value>
+       </configitem>
+       <configitem name = "passive mode start port">
+           <value>&amp;#60;Random&amp;#62;</value>
+       </configitem>
+       <configitem name = "passive mode ports">
+           <value>&amp;#60;Random&amp;#62;</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "sftp server">
+       <configitem name = "sftp state">
+           <value>disable</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "bluetooth">
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "cp functions">
+       <configitem name = "reset to factory defaults cp">
+           <value>enable</value>
+       </configitem>
+       <configitem name = "wps pushbutton cp">
+           <value>disable</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "consoleflow">
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "access point">
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "telnet">
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "port">
+           <value>23 </value>
+       </configitem>
+       <configitem name = "max sessions">
+           <value>3 </value>
+       </configitem>
+       <configitem name = "authentication">
+           <value>disable</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "rss">
+       <configitem name = "feed">
+           <value>enable</value>
+       </configitem>
+       <configitem name = "persist">
+           <value>enable</value>
+       </configitem>
+       <configitem name = "max entries">
+           <value>100 </value>
+       </configitem>
+   </configgroup>
+      <configgroup name = "line" instance = "1">
+       <configitem name = "name">
+           <value>Line1-device</value>
+       </configitem>
+       <configitem name = "baud rate">
+           <value>19200 bits per second</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "tunnel connect" instance = "1">
+       <configitem name = "connect mode">
+           <value>Any Character</value>
+       </configitem>
+       <configitem name = "host" instance = "1">
+           <value name = "protocol">SSL</value>
+           <value name = "secure protocols">TLS1.2</value>
+           <value name = "credentials">device-certificate</value>
+           <value name = "validate certificate">disable</value>
+           <value name = "tunnel buffer state">enable</value>
+           <value name = "tunnel buffer size">2 Mbytes</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "tunnel accept" instance = "1">
+       <configitem name = "accept mode">
+           <value>Disable</value>
+       </configitem>
+   </configgroup>
+    <configgroup name = "tunnel accept" instance = "2">
+       <configitem name = "accept mode">
+           <value>Disable</value>
+       </configitem>
+   </configgroup>
+    <configgroup name = "tunnel accept" instance = "3">
+       <configitem name = "accept mode">
+           <value>Disable</value>
+       </configitem>
+   </configgroup>
+    <configgroup name = "tunnel accept" instance = "4">
+       <configitem name = "accept mode">
+           <value>Disable</value>
+       </configitem>
+   </configgroup>
+    <configgroup name = "tunnel accept" instance = "5">
+       <configitem name = "accept mode">
+           <value>Disable</value>
+       </configitem>
+   </configgroup>
+    <configgroup name = "tunnel accept" instance = "6">
+       <configitem name = "accept mode">
+           <value>Disable</value>
+       </configitem>
+   </configgroup>
+    <configgroup name = "tunnel accept" instance = "7">
+       <configitem name = "accept mode">
+           <value>Disable</value>
+       </configitem>
+   </configgroup>
+    <configgroup name = "usb line" instance = "2">
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "ssh">
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "http server">
+       <configitem name = "https state">
+           <value>enable</value>
+       </configitem>
+       <configitem name = "secure port">
+           <value>443 </value>
+       </configitem>
+       <configitem name = "secure protocols">
+           <value>TLS1.2</value>
+       </configitem>
+       <configitem name = "secure credentials">
+           <value>device-certificate</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "bluetooth line" instance = "3">
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "xml import control">
+       <configitem name = "reboot">
+           <value>enable</value>
+       </configitem>
+   </configgroup>
+</configrecord>

@@ -3,9 +3,9 @@ from ctypes import *
 
 _library = ctypes.CDLL('libsecurity.so')
 
-def ltrx_status_get(groups, xcr, messages):
+def ltrx_status_get(groups, xsr, messages):
     global _library
-    result = _library.ltrx_status_get(ctypes.c_char_p(groups),ctypes.c_char_p(xcr),ctypes.c_char_p(messages))
+    result = _library.ltrx_status_get(ctypes.c_char_p(groups),ctypes.c_char_p(xsr),ctypes.c_char_p(messages))
     return result
 
 def ltrx_cfg_get(groups, xcr, messages):
