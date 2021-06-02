@@ -1,0 +1,94 @@
+diff -up net-snmp-5.7.2/snmplib/keytools.c.fips net-snmp-5.7.2/snmplib/keytools.c
+--- net-snmp-5.7.2/snmplib/keytools.c.fips  2012-11-12 13:36:17.868635391 +0100
++++ net-snmp-5.7.2/snmplib/keytools.c   2012-11-12 14:24:23.031293984 +0100
+@@ -156,27 +156,36 @@ generate_Ku(const oid * hashtype, u_int
+     EVP_MD_CTX_init(ctx);
+ #endif
+ #ifndef NETSNMP_DISABLE_MD5
+-    if (ISTRANSFORM(hashtype, HMACMD5Auth))
+-        EVP_DigestInit(ctx, EVP_md5());
+-    else
++    if (ISTRANSFORM(hashtype, HMACMD5Auth)) {
++        if (!EVP_DigestInit(ctx, EVP_md5()))
++            /* MD5 not supported */
++            return SNMPERR_GENERR;
++    } else
+ #endif
+-        if (ISTRANSFORM(hashtype, HMACSHA1Auth))
+-        EVP_DigestInit(ctx, EVP_sha1());
+-    else
+-        QUITFUN(SNMPERR_GENERR, generate_Ku_quit);
++        if (ISTRANSFORM(hashtype, HMACSHA1Auth)) {
++            if (!EVP_DigestInit(ctx, EVP_sha1()))
++                /* SHA1 not supported */
++                return SNMPERR_GENERR;
++        } else {
++            QUITFUN(SNMPERR_GENERR, generate_Ku_quit);
++        }
+ #elif NETSNMP_USE_INTERNAL_CRYPTO
+ #ifndef NETSNMP_DISABLE_MD5
+     if (ISTRANSFORM(hashtype, HMACMD5Auth)) {
+-        MD5_Init(&cmd5);
++        if (!MD5_Init(&cmd5))
++            /* MD5 not supported */
++            return SNMPERR_GENERR;
+         cryptotype = TYPE_MD5;
+     } else
+ #endif
+-           if (ISTRANSFORM(hashtype, HMACSHA1Auth)) {
+-        SHA1_Init(&csha1);
+-        cryptotype = TYPE_SHA1;
+-    } else {
+-        return (SNMPERR_GENERR);
+-    }
++        if (ISTRANSFORM(hashtype, HMACSHA1Auth)) {
++            if (!SHA1_Init(&csha1))
++                /* SHA1 not supported */
++                return SNMPERR_GENERR;
++            cryptotype = TYPE_SHA1;
++        } else {
++            return (SNMPERR_GENERR);
++        }
+ #else
+     MDbegin(&MD);
+ #endif                          /* NETSNMP_USE_OPENSSL */
+diff -up net-snmp-5.7.2/snmplib/lcd_time.c.fips net-snmp-5.7.2/snmplib/lcd_time.c
+--- net-snmp-5.7.2/snmplib/lcd_time.c.fips  2012-10-10 00:28:58.000000000 +0200
++++ net-snmp-5.7.2/snmplib/lcd_time.c   2012-11-12 13:36:11.326657629 +0100
+@@ -505,6 +505,12 @@ hash_engineID(const u_char * engineID, u
+     rval = sc_hash(usmHMACMD5AuthProtocol,
+                    sizeof(usmHMACMD5AuthProtocol) / sizeof(oid),
+                    engineID, engineID_len, buf, &buf_len);
++    if (rval == SNMPERR_SC_NOT_CONFIGURED) {
++        /* fall back to sha1 */
++        rval = sc_hash(usmHMACSHA1AuthProtocol,
++                   sizeof(usmHMACSHA1AuthProtocol) / sizeof(oid),
++                   engineID, engineID_len, buf, &buf_len);
++    }
+ #else
+     rval = sc_hash(usmHMACSHA1AuthProtocol,
+                    sizeof(usmHMACSHA1AuthProtocol) / sizeof(oid),
+diff -up net-snmp-5.7.2/snmplib/scapi.c.fips net-snmp-5.7.2/snmplib/scapi.c
+--- net-snmp-5.7.2/snmplib/scapi.c.fips 2012-10-10 00:28:58.000000000 +0200
++++ net-snmp-5.7.2/snmplib/scapi.c  2012-11-12 13:36:11.327657627 +0100
+@@ -438,6 +438,7 @@ sc_generate_keyed_hash(const oid * autht
+  * Returns:
+  * SNMPERR_SUCCESS              Success.
+  * SNMP_SC_GENERAL_FAILURE      Any error.
++ * SNMPERR_SC_NOT_CONFIGURED    Hash type not supported.
+  */
+ int
+ sc_hash(const oid * hashtype, size_t hashtypelen, const u_char * buf,
+@@ -495,7 +496,10 @@ sc_hash(const oid * hashtype, size_t has
+     EVP_MD_CTX_init(cptr);
+ #endif
+ #endif
+-    EVP_DigestInit(cptr, hashfn);
++    if (!EVP_DigestInit(cptr, hashfn)) {
++        /* requested hash function is not available */
++        return SNMPERR_SC_NOT_CONFIGURED;
++    }
+ 
+ /** pass the data */
+     EVP_DigestUpdate(cptr, buf, buf_len);
+
