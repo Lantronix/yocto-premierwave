@@ -118,10 +118,10 @@ null::sysinit:/bin/mkdir -p /run/lock
 null::sysinit:/bin/mkdir -p /var/run/sshd
 null::sysinit:/bin/mkdir -p /etc/ssh
 null::sysinit:ln -sf /etc/sshd_config /etc/ssh/sshd_config
-null::sysinit:ln -sf /etc/ssh_host_rsa_key /etc/ssh/
-null::sysinit:ln -sf /etc/ssh_host_dsa_key /etc/ssh/
-null::sysinit:ln -sf /etc/ssh_host_ecdsa_key /etc/ssh/
-null::sysinit:ln -sf /etc/ssh_host_ed25519_key /etc/ssh/
+null::sysinit:ln -sf /etc/ssh/ssh_host_rsa_key /etc/
+null::sysinit:ln -sf /etc/ssh/ssh_host_dsa_key /etc/
+null::sysinit:ln -sf /etc/ssh/ssh_host_ecdsa_key /etc/
+null::sysinit:ln -sf /etc/ssh/ssh_host_ed25519_key /etc/
 null::sysinit:/usr/bin/update-alternatives
 null::sysinit:/bin/bash -c 'for script in /etc/rcS.d/*; do \$script start; done'
 null::sysinit:/bin/bash -c 'for script in /etc/rc5.d/*; do \$script start; done'
