@@ -1,0 +1,53 @@
+diff -Naur netsnmp-5.8/snmplib/system.c netsnmp-5.8-ltrx/snmplib/system.c
+--- netsnmp-5.8/snmplib/system.c	2018-07-16 20:03:40.000000000 +0530
++++ netsnmp-5.8-ltrx/snmplib/system.c	2018-11-02 11:29:26.484209044 +0530
+@@ -547,6 +547,35 @@
+         }
+         free(buf);
+     }
++    //BEGIN LTRX: In bridging mode? Use wlan0 only
++    int bridge_mode = 0;
++    FILE* fp = fopen("/etc/sysconfig/network-scripts/ifcfg-wlan0","r");
++    if(fp)
++    {
++        fseek(fp, 0, SEEK_END);
++        int file_size = ftell(fp);
++        rewind(fp);
++        char* buffer = NULL;
++        if(file_size > 0)
++        {
++            buffer = (char*) malloc(sizeof(char) * (file_size + 1) );
++            int read_size = fread(buffer, sizeof(char), file_size, fp);
++            buffer[file_size] = '\0';
++            if (file_size != read_size)
++            {
++                free(buffer);
++                buffer = NULL;
++            }
++        }
++        fclose(fp);
++        if(buffer && strstr(buffer,"BRIDGE=yes"))
++        {
++            bridge_mode = 1;
++        }
++        free(buffer);
++        buffer = NULL;
++    }
++    //END LTRX
+
+     for (ifrp = ifc.ifc_req;
+         (char *)ifrp < (char *)ifc.ifc_req + ifc.ifc_len;
+@@ -561,6 +590,12 @@
+         if (ifrp->ifr_addr.sa_family != AF_INET) {
+             continue;
+         }
++        //BEGIN LTRX: In bridging mode? Use wlan0 only
++        if(bridge_mode == 1 && strcasecmp(ifrp->ifr_name,"wlan0") && strcasecmp(ifrp->ifr_name,"wlan0:avahi"))
++        {
++            continue;
++        }
++        //END LTRX
+         addr = ((struct sockaddr_in *) &(ifrp->ifr_addr))->sin_addr.s_addr;
+
+         if (ioctl(sd, SIOCGIFFLAGS, (char *) ifrp) < 0) {
+
