@@ -1,0 +1,7 @@
+DEVICE=wlan0
+ONBOOT=no
+TYPE=wireless
+BOOTPROTO=dhcp
+IPADDR=0.0.0.0
+NETMASK=0.0.0.0
+

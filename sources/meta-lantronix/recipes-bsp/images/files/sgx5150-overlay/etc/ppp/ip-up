@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+#
+# When the ppp link comes up, this script is called with the following
+# parameters
+#       $1      the interface name used by pppd (e.g. ppp3)
+#       $2      the tty device name
+#       $3      the tty device speed
+#       $4      the local IP address for the interface
+#       $5      the remote IP address
+#       $6      the parameter specified by the 'ipparam' option to pppd
+#
+if [ -f /etc/sysconfig/network_$1 ]; then
+    #enable networking for interface
+    echo "NETWORKING=yes" > /etc/sysconfig/network_$1.tmp
+    echo "P_t_P=$5" >> /etc/sysconfig/network_$1.tmp
+    cat /etc/sysconfig/network_$1 | grep -v -e"NETWORKING[[:space:]]*=" -e"P_t_P[[:space:]]*=">> /etc/sysconfig/network_$1.tmp
+    mv /etc/sysconfig/network_$1.tmp /etc/sysconfig/network_$1
+fi
+#delete the default route
+route del default dev ${1}
+#update the host route if neccesary
+remote=`route -n | grep ${1} | head -n1 | awk -F' ' '{print $1}'`
+metric=`ltrx_getifinfo GETMETRIC ${1} 0`
+subnet=`route -n | grep ${1} | head -n1 | awk -F' ' '{print $3}'`
+route del -net ${remote} netmask ${subnet} dev ${1}
+route add -net ${5} netmask ${subnet} dev ${1} metric ${metric}
+#update dns entries
+if [ -n "$USEPEERDNS" -a -f /etc/ppp/resolv.conf ]; then
+	cat /etc/ppp/resolv.conf | grep nameserver | awk -F' ' '{print $2}' > /etc/sysconfig/dhcp_dns_${1}
+fi
+echo "DHCP_ROUTER=0.0.0.0" > /etc/sysconfig/dhcp_router_${1}
+echo `date +%s` > /tmp/${1}.uptime
+#let the network script figure out the rest
+LTRX_NET_COMMON="/etc/sysconfig/network-scripts/ltrx-network-common.script"
+if [ ! -f $LTRX_NET_COMMON ]; then
+    echo "Missing ltrx network common script."
+    logger "Missing ltrx network common script."
+    exit 1
+fi
+. $LTRX_NET_COMMON
+ltrx_start_network ${1}

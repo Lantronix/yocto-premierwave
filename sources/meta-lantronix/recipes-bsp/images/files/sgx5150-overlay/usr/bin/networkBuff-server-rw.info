@@ -1,0 +1,4 @@
+Name: Network Accept with Buffer
+Description: Create a Network TCP connection to send and receive data. Data recived from serial port
+             will be bufferred, if the network connection is not active
+Parameters: tcp://127.0.0.1:<subscribe zmq port> <IP address> <port> <protocol TCP> <buffersize 0..2> tcp://127.0.0.1:<publish zmq port>

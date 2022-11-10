@@ -1,0 +1,38 @@
+#!/bin/sh
+#
+# When the ppp link goes down, this script is called with the following
+# parameters
+#       $1      the interface name used by pppd (e.g. ppp3)
+#       $2      the tty device name
+#       $3      the tty device speed
+#       $4      the local IP address for the interface
+#       $5      the remote IP address
+#       $6      the parameter specified by the 'ipparam' option to pppd
+#
+if [ -f /etc/sysconfig/network-scripts/ifcfg-${1} ]; then
+	. /etc/sysconfig/network-scripts/ifcfg-${1}
+    if [ "$CONNECTIONMODE" == "On Demand" ]; then
+        #reset dns server to P-t-P address
+        echo $5 > /etc/sysconfig/dhcp_dns_${1}
+    else
+        if [ -f /etc/sysconfig/network_$1 ]; then
+            #disable networking for interface
+            echo "NETWORKING=no" > /etc/sysconfig/network_$1.tmp
+            cat /etc/sysconfig/network_$1 | grep -v -e"NETWORKING[[:space:]]*=" >> /etc/sysconfig/network_$1.tmp
+            mv /etc/sysconfig/network_$1.tmp /etc/sysconfig/network_$1
+        fi
+        #delete the dns,router files if connection mode is not on-demand
+        rm -f /etc/sysconfig/dhcp_dns_$1
+        rm -f /etc/sysconfig/dhcp_router_$1
+    fi
+fi
+rm -f /tmp/${1}.uptime
+#let the network script figure out the rest
+LTRX_NET_COMMON="/etc/sysconfig/network-scripts/ltrx-network-common.script"
+if [ ! -f $LTRX_NET_COMMON ]; then
+    echo "Missing ltrx network common script."
+    logger "Missing ltrx network common script."
+    exit 1
+fi
+. $LTRX_NET_COMMON
+ltrx_start_network ${1}

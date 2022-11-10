@@ -1,0 +1,15 @@
+#!/bin/sh
+
+if [ "$#" -lt 1 ] ; then
+	echo "Invalid arguments."
+	exit 1
+fi
+                
+IFCNAME=$1
+                                
+ifconfig $IFCNAME down
+sleep 1
+ifconfig $IFCNAME up
+sleep 1
+
+exit 0

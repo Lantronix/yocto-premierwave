@@ -1,0 +1,38 @@
+#!/bin/sh
+NTPPID="/tmp/ntpd.pid"
+
+#ntpd returns 1 right away if server is a hostname and dns is not resolving addr
+ntpd_background()
+{
+	if [ $(/bin/grep 'onstart' /etc/ntp.conf | /usr/bin/cut -d ' ' -f2) == 'enabled' ];then
+		while [ $(/usr/sbin/ntpd -S /etc/ntpd.action -p $(/bin/grep 'server' /etc/ntp.conf | /usr/bin/cut -d ' ' -f2) 2>/tmp/ntpd.log;echo $?) -eq 1 ]
+		do
+			sleep 1
+		done
+	fi
+}
+
+ntpd_kill_previous_session()
+{
+	if [ -e $NTPPID ];then
+		kill $(cat $NTPPID)
+	fi
+	killall ntpd
+}
+
+case $1 in
+	start)
+		ntpd_background &
+		echo "$!" > $NTPPID
+		;;
+	stop)
+		ntpd_kill_previous_session
+		;;
+	restart)
+		ntpd_kill_previous_session
+		ntpd_background &
+		echo "$!" > $NTPPID
+		;;
+esac
+
+exit 0

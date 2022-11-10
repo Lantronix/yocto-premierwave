@@ -1,0 +1,3 @@
+Name: Network Accept
+Description: Create a Network TCP connection to send and receive data
+Parameters: tcp://127.0.0.1:<subscribe zmq port> <IP address> <port> <protocol TCP> tcp://127.0.0.1:<publish zmq port>

@@ -50,6 +50,7 @@ RDEPENDS_${PN} += "wireless-tools"
 RDEPENDS_${PN} += "zeromq"
 RDEPENDS_${PN} += "socat"
 RDEPENDS_${PN} += "ikescan"
+RDEPENDS_${PN} += "busybox"
 
 INSANE_SKIP_${PN} += "dev-deps dev-so"
 

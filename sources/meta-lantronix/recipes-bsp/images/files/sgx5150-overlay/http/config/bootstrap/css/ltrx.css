@@ -1,0 +1,116 @@
+/* Sticky footer styles
+-------------------------------------------------- */
+
+body {
+  /* Margin bottom by footer height plus 5px spacing with main contains above */
+  margin-bottom: 40px;
+}
+
+.footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  /* Set the fixed height of the footer here */
+  height: 35px;
+  /* background-color: #f5f5f5; */
+}
+
+
+/*
+.navbar-brand {
+  background: url("../images/xerox_logo.png") no-repeat right center;
+  background-size: contain;
+  height: 33px;
+  width: 200px;
+}
+*/
+
+/* Same concept with .navbar-default but no color
+Without this, when content scroll, it see through */
+.justified-navbar-default {
+  background-color: #ffffff;
+  border-color: #ffffff;
+}
+
+h4.logo {
+  display: inline;
+  background-color: transparent;
+  vertical-align: text-top;
+}
+
+.justified-masthead {
+  padding-top: 8px;
+  padding-bottom: 4px;
+}
+
+/* Sidebar related */
+.sidebar .sidebar-nav.navbar-collapse {
+    padding-right: 0;
+    padding-left: 0;
+}
+
+.sidebar .sidebar-search {
+    padding: 15px;
+}
+
+.sidebar ul li {
+    border-bottom: 1px solid #e7e7e7;
+}
+
+.sidebar ul li a.active {
+    background-color: #eee;
+}
+
+.sidebar .arrow {
+    float: right;
+}
+
+/*
+.sidebar .fa.arrow:before {
+    content: "\f104";
+}
+
+.sidebar .active>a>.fa.arrow:before {
+    content: "\f107";
+}
+*/
+
+.sidebar .nav-second-level li,
+.sidebar .nav-third-level li {
+    border-bottom: 0!important;
+}
+
+.sidebar .nav-second-level li a {
+    padding-left: 37px;
+}
+
+.sidebar .nav-third-level li a {
+    padding-left: 52px;
+}
+
+@media(min-width:768px) {
+    .sidebar {
+        z-index: 1;
+        position: relative;
+        /*width: 250px;*/
+        width: 90%;
+        /*margin-top: 51px;*/
+        /*background-color: #f3f3f3;
+        border: 1px solid #e0e0e0;*/
+
+        border: 1px solid #ccc;
+        border-radius: 5px;
+    }
+}
+
+#activity_icon
+{
+  display: none;
+  position: absolute;
+  z-index: 100;
+}
+
+.table-responsive
+{
+    overflow-x: hidden;
+}

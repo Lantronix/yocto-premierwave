@@ -1,0 +1,3 @@
+Name: Serial Connect (RS232/RS485)
+Description: Open a serial port to send and receive data
+Parameters: tcp://127.0.0.1:<subscribe zmq port> <serial port> <baud rate> <data bits> <parity> <stop bits> <flow control None|Software|Hardware> <timeout> tcp://127.0.0.1:<publish zmq port>

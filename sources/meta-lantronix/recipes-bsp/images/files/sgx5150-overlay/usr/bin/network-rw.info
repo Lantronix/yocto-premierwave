@@ -1,0 +1,3 @@
+Name: Network Connect (TCP/UDP)
+Description: Create a Network TCP/UDP connection to send and receive data
+Parameters: tcp://127.0.0.1:<subscribe zmq port> <IP address> <port> <protocol TCP|UDP> tcp://127.0.0.1:<publish zmq port>

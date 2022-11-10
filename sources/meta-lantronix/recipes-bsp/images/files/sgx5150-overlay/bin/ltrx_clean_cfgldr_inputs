@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+
+rm -f /ltrx_private/wifi_cred_details
+rm -f /ltrx_private/ifcfg-*
+rm -f /ltrx_private/static*
+rm -f /ltrx_private/softapcfg
+rm -f /ltrx_private/interfaces
+rm -f /ltrx_private/wpa_supplicant.conf
+rm -rf /ltrx_private/certs/
+rm -rf /ltrx_private/clientcerts/
+rm -f /ltrx_private/nginx.conf
+rm -f /ltrx_private/ifconfig-eth0-output
+rm -f /ltrx_private/ifconfig-wlan0-output
+rm -f /ltrx_private/ifconfig-eth0-avahi-output
+rm -f /ltrx_private/ifconfig-wlan0-avahi-output
+rm -f /ltrx_private/gw_*
+rm -f /ltrx_private/http.conf
+rm -rf /ltrx_private/brmgr/
+rm -f /ltrx_private/eth0-metric
+rm -f /ltrx_private/wlan0-metric

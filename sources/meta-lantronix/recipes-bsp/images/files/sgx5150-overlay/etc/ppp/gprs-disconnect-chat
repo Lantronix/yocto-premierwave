@@ -1,0 +1,9 @@
+
+ABORT           "BUSY"
+ABORT           "ERROR"
+ABORT           "NO DIALTONE"
+
+TIMEOUT         60
+""              \d\d+++\d\d
+""              ATH
+OK              ""

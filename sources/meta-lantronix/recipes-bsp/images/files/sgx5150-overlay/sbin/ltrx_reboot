@@ -1,0 +1,11 @@
+#!/bin/sh
+# ltrx_reboot - Delays the specified number of seconds and reboots
+
+if [ $# -eq 1 ]; then
+	sleep $1
+fi
+
+/sbin/reboot
+
+exit 0
+
