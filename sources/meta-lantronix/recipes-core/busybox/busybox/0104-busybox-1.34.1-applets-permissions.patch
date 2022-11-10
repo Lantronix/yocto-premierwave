@@ -1,0 +1,13 @@
+diff --git a/coreutils/date.c b/coreutils/date.c
+index 7061f17..1fcc26a 100644
+--- a/coreutils/date.c
++++ b/coreutils/date.c
+@@ -56,7 +56,7 @@
+ //config:	the same format. With it on, 'date DATE' additionally supports
+ //config:	MMDDhhmm[[YY]YY][.ss] format.
+ 
+-//applet:IF_DATE(APPLET_NOEXEC(date, date, BB_DIR_BIN, BB_SUID_DROP, date))
++//applet:IF_DATE(APPLET(date, BB_DIR_BIN, BB_SUID_REQUIRE))
+ /* bb_common_bufsiz1 usage here is safe wrt NOEXEC: not expecting it to be zeroed. */
+ 
+ //kbuild:lib-$(CONFIG_DATE) += date.o

@@ -5,7 +5,6 @@ PR = "r32"
 SRC_URI = "http://www.busybox.net/downloads/busybox-${PV}.tar.bz2;name=tarball \
            file://get_header_tar.patch \
            file://busybox-appletlib-dependency.patch \
-           file://busybox-udhcpc-no_deconfig.patch \
            file://find-touchscreen.sh \
            file://busybox-cron \
            file://busybox-httpd \
@@ -29,19 +28,14 @@ SRC_URI = "http://www.busybox.net/downloads/busybox-${PV}.tar.bz2;name=tarball \
            file://inetd.conf \
            file://inetd \
            file://login-utilities.cfg \
-           file://0001-build-system-Specify-nostldlib-when-linking-to-.o-fi.patch \
            file://recognize_connmand.patch \
-           file://busybox-cross-menuconfig.patch \
            file://CVE-2014-9645_busybox_reject_module_names_with_slashes.patch \
-           file://0006-busybox-1.22.1-udhcpc.patch \
-           file://0100-busybox-1.22.1-ntp-log.patch \
-           file://0101-busybox-1.22.1-arping-permissions.patch \
-           file://0102-busybox-1.22.1-syslog.patch \
-           file://0103-busybox-1.22.1-telnet.patch \
-           file://0104-busybox-1.22.1-applets-permissions.patch \
-           file://0105--busybox-1.22.1-syslog-counters.patch \
-           file://0106--busybox-1.22.1-syslog-remotelog-localport.patch \
-           file://0107--busybox-1.22.1-dhcpc-savexid.patch \
+           file://0100-busybox-1.34.1-ntp-log.patch \
+           file://0101-busybox-1.34.1-arping-permissions.patch \
+           file://0102-busybox-1.34.1-syslog.patch \
+           file://0103-busybox-1.34.1-telnet.patch \
+           file://0104-busybox-1.34.1-applets-permissions.patch \
+           file://0105-busybox-1.34.1-dhcpc-savexid.patch \
            file://defconfig \
 "
 
@@ -50,8 +44,8 @@ SRC_URI = "http://www.busybox.net/downloads/busybox-${PV}.tar.bz2;name=tarball \
 SRC_URI_append_pw2050 = "file://pw2050.cfg"
 SRC_URI_append_sgx5150 = "file://sgx5150.cfg"
 
-SRC_URI[tarball.md5sum] = "337d1a15ab1cb1d4ed423168b1eb7d7e"
-SRC_URI[tarball.sha256sum] = "ae0b029d0a9e4dd71a077a790840e496dd838998e4571b87b60fed7462b6678b"
+SRC_URI[tarball.md5sum] = "5ad7368a73d12b8c4f8881bf7afb3d82"
+SRC_URI[tarball.sha256sum] = "415fbd89e5344c96acf449d94a6f956dbed62e18e835fc83e064db33a34bd549"
 
 EXTRA_OEMAKE += "V=1 ARCH=${TARGET_ARCH} CROSS_COMPILE=${TARGET_PREFIX} SKIP_STRIP=y"
 

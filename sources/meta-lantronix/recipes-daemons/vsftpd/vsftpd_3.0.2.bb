@@ -17,6 +17,9 @@ SRC_URI = "https://security.appspot.com/downloads/vsftpd-${PV}.tar.gz \
            file://vsftpd-3.0.2-004-ltrx-firmware-upgrade.patch \
            file://vsftpd-3.0.2-005-ltrx-firmware-upgrade-permission.patch \
            file://vsftpd-3.0.2-006-ltrx-firmware-upgrade-2.patch \
+           file://vsftpd-3.0.2-007-ltrx-firmware-upgrade-status.patch \
+           file://vsftpd-3.0.2-008-ltrx-firmware-upgrade-3.patch \
+           file://vsftpd-3.0.2-009-ltrx-firmware-upgrade-details.patch \
 "
 
 LIC_FILES_CHKSUM = "file://COPYING;md5=a6067ad950b28336613aed9dd47b1271 \

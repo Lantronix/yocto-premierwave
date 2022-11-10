@@ -1,0 +1,57 @@
+Index: vsftpd-3.0.2/postlogin.c
+===================================================================
+--- vsftpd-3.0.2.orig/postlogin.c
++++ vsftpd-3.0.2/postlogin.c
+@@ -1053,6 +1053,40 @@ ltrx_translate_fwname(struct mystr* p_fi
+ }
+ 
+ static int
++ltrx_check_fwupdate_inprogress(struct vsf_session* p_sess,struct mystr* p_filename)
++{
++    if (!str_equal_text(p_filename, "/tmp/firmware.rom"))
++    {
++        //this is ok
++        return 1;
++    }
++    //details fine not available update before fw update
++    if(access("/tmp/fwupgrade.details", F_OK ) == -1) {
++       char ip_addr[48] = "";
++       strcpy(ip_addr, str_getbuf(&p_sess->remote_ip_str));
++       if(*ip_addr && (0==strncmp(ip_addr, "::ffff:", 7)))
++       {
++           /* Remove ::ffff: for Proper  IPv4 */
++           strncpy(ip_addr, ip_addr+7, sizeof(ip_addr));
++       }
++       FILE* fp = fopen("/tmp/fwupgrade.details","w+");
++        if(fp)
++        {
++            fprintf(fp,"user=%s\n", str_getbuf(&p_sess->user_str));
++            fprintf(fp,"ip_addr=%s\n", ip_addr);
++            fclose(fp);
++           return 1;
++        } else {
++	    //unable to create details file stop update.
++	    return 0;
++	}
++    } else {
++	//details file exists. FW update already in progress
++        return 0;
++    }
++}
++
++static int
+ ltrx_check_fwupdate_permission(struct vsf_session* p_sess,struct mystr* p_filename)
+ {
+     if (!str_equal_text(p_filename, "/tmp/firmware.rom"))
+@@ -1107,6 +1141,11 @@ handle_upload_common(struct vsf_session*
+       vsf_cmdio_write(p_sess, FTP_NOPERM, "Permission denied.");
+       return;
+   }
++  if(0==ltrx_check_fwupdate_inprogress(p_sess,p_filename))
++  {
++      vsf_cmdio_write(p_sess, FTP_NOPERM, "Firmware update already in Progress.");
++      return;
++  }
+   /* NOTE - actual file permissions will be governed by the tunable umask */
+   /* XXX - do we care about race between create and chown() of anonymous
+    * upload?

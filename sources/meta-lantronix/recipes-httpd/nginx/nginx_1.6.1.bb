@@ -21,6 +21,7 @@ SRC_URI = " \
 	file://nginx.init \
 	file://nginx-volatile.conf \
 	file://nginx.service \
+	file://nginx-013-login_audit.patch \
 "
 SRC_URI[md5sum] = "2562320f1535e3e31d165e337ae94f21"
 SRC_URI[sha256sum] = "48e2787a6b245277e37cb7c5a31b1549a0bbacf288aa4731baacf9eaacdb481b"

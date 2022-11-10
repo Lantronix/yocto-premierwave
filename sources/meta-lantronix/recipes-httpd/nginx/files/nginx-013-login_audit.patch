@@ -1,0 +1,117 @@
+Index: nginx-develop-1.6.1/src/http/modules/ngx_http_auth_basic_module.c
+===================================================================
+--- nginx-develop-1.6.1.orig/src/http/modules/ngx_http_auth_basic_module.c
++++ nginx-develop-1.6.1/src/http/modules/ngx_http_auth_basic_module.c
+@@ -29,7 +29,7 @@ static ngx_int_t ngx_http_auth_basic_han
+ static ngx_int_t ngx_http_auth_basic_crypt_handler(ngx_http_request_t *r,
+     ngx_http_auth_basic_ctx_t *ctx, ngx_str_t *passwd, ngx_str_t *realm);
+ static ngx_int_t ngx_http_auth_basic_set_realm(ngx_http_request_t *r,
+-    ngx_str_t *realm);
++    ngx_str_t *realm, ngx_uint_t is_stale);
+ static void ngx_http_auth_basic_close(ngx_file_t *file);
+ static void *ngx_http_auth_basic_create_loc_conf(ngx_conf_t *cf);
+ static char *ngx_http_auth_basic_merge_loc_conf(ngx_conf_t *cf,
+@@ -140,7 +140,7 @@ ngx_http_auth_basic_handler(ngx_http_req
+         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                       "no user/password was provided for basic authentication");
+ 
+-        return ngx_http_auth_basic_set_realm(r, &realm);
++        return ngx_http_auth_basic_set_realm(r, &realm, 0);
+     }
+ 
+     if (rc == NGX_ERROR) {
+@@ -283,7 +283,7 @@ ngx_http_auth_basic_handler(ngx_http_req
+                   "user \"%V\" was not found in \"%V\"",
+                   &r->headers_in.user, &user_file);
+ 
+-    return ngx_http_auth_basic_set_realm(r, &realm);
++    return ngx_http_auth_basic_set_realm(r, &realm, 1);
+ }
+ 
+ 
+@@ -313,7 +313,7 @@ ngx_http_auth_basic_crypt_handler(ngx_ht
+                       "user \"%V\": password mismatch",
+                       &r->headers_in.user);
+ 
+-        return ngx_http_auth_basic_set_realm(r, realm);
++        return ngx_http_auth_basic_set_realm(r, realm, 1);
+     }
+ 
+     if (rc == NGX_ERROR) {
+@@ -347,7 +347,7 @@ ngx_http_auth_basic_crypt_handler(ngx_ht
+ 
+ 
+ static ngx_int_t
+-ngx_http_auth_basic_set_realm(ngx_http_request_t *r, ngx_str_t *realm)
++ngx_http_auth_basic_set_realm(ngx_http_request_t *r, ngx_str_t *realm, ngx_uint_t is_stale)
+ {
+     size_t   len;
+     u_char  *basic, *p;
+@@ -372,7 +372,26 @@ ngx_http_auth_basic_set_realm(ngx_http_r
+     ngx_str_set(&r->headers_out.www_authenticate->key, "WWW-Authenticate");
+     r->headers_out.www_authenticate->value.data = basic;
+     r->headers_out.www_authenticate->value.len = len;
+-
++    if(!is_stale) {
++        char ip_addr[48] = "";
++        char uri[32] = "";
++        ngx_memcpy(ip_addr, r->connection->addr_text.data, r->connection->addr_text.len);
++        if(*ip_addr && (0==strncmp(ip_addr, "::ffff:", 7)))
++        {
++            /* Remove ::ffff: for Proper  IPv4 */
++            strncpy(ip_addr, ip_addr+7, sizeof(ip_addr));
++        }
++        ngx_memcpy(uri, r->uri.data, r->uri.len);
++        if(!strstr(uri, "logout")) {
++            char cmd[100] = "";
++            char weblogin[100] = "";
++            sprintf(weblogin, "/tmp/.web_login_%s", ip_addr);
++            if(access(weblogin, F_OK ) == -1) {
++                sprintf(cmd, "touch %s", weblogin);
++                system(cmd);
++            }
++        }
++    }
+     return NGX_HTTP_UNAUTHORIZED;
+ }
+ 
+Index: nginx-develop-1.6.1/src/http/modules/ngx_http_auth_digest_module.c
+===================================================================
+--- nginx-develop-1.6.1.orig/src/http/modules/ngx_http_auth_digest_module.c
++++ nginx-develop-1.6.1/src/http/modules/ngx_http_auth_digest_module.c
+@@ -833,7 +833,6 @@ static ngx_int_t ngx_http_auth_digest_se
+   ngx_str_t challenge;
+   u_char *p;
+   size_t realm_len = strnlen((const char *)realm->data, realm->len);
+-
+   r->headers_out.www_authenticate = ngx_list_push(&r->headers_out.headers);
+   if (r->headers_out.www_authenticate == NULL) {
+     return NGX_HTTP_INTERNAL_SERVER_ERROR;
+@@ -872,7 +871,26 @@ static ngx_int_t ngx_http_auth_digest_se
+     p = ngx_cpymem(p, "\"", sizeof("\""));
+   }
+   r->headers_out.www_authenticate->value = challenge;
+-
++  if(!is_stale) {
++      char ip_addr[48] = "";
++      char uri[32] = "";
++      ngx_memcpy(ip_addr, r->connection->addr_text.data, r->connection->addr_text.len);
++      if(*ip_addr && (0==strncmp(ip_addr, "::ffff:", 7)))
++      {
++          /* Remove ::ffff: for Proper  IPv4 */
++          strncpy(ip_addr, ip_addr+7, sizeof(ip_addr));
++      }
++      ngx_memcpy(uri, r->uri.data, r->uri.len);
++      if(!strstr(uri, "logout")) {
++          char cmd[100] = "";
++          char weblogin[100] = "";
++          sprintf(weblogin, "/tmp/.web_login_%s", ip_addr);
++          if(access(weblogin, F_OK ) == -1) {
++              sprintf(cmd, "touch %s", weblogin);
++              system(cmd);
++          }
++      }
++  }
+   return NGX_HTTP_UNAUTHORIZED;
+ }
+ 

@@ -1,0 +1,13 @@
+diff --git a/networking/arping.c b/networking/arping.c
+index d44d7d6..c4fbf32 100644
+--- a/networking/arping.c
++++ b/networking/arping.c
+@@ -11,7 +11,7 @@
+ //config:	help
+ //config:	Ping hosts by ARP packets.
+ 
+-//applet:IF_ARPING(APPLET(arping, BB_DIR_USR_SBIN, BB_SUID_DROP))
++//applet:IF_ARPING(APPLET(arping, BB_DIR_USR_SBIN, BB_SUID_MAYBE))
+ 
+ //kbuild:lib-$(CONFIG_ARPING) += arping.o
+ 

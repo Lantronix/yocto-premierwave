@@ -1,0 +1,49 @@
+Index: openssh-7.6p1/sftp-server.c
+===================================================================
+--- openssh-7.6p1.orig/sftp-server.c
++++ openssh-7.6p1/sftp-server.c
+@@ -674,6 +674,27 @@ process_init(void)
+ }
+ 
+ static int
++ltrx_check_fwupdate_inprogress(char* name)
++{
++    if(access("/tmp/fwupgrade.details", F_OK ) == -1) {
++        FILE* fp  = fopen("/tmp/fwupgrade.details","w+");
++        if(fp)
++        {
++            fprintf(fp,"user=%s\n", pw->pw_name);
++            fprintf(fp,"ip_addr=%s\n", client_addr);
++            fclose(fp);
++            return 1;
++        } else {
++	    //unable to create details file stop update.
++            return 0;
++        }
++    } else {
++        //details file exists. FW update already in progress
++        return 0;
++    }
++}
++
++static int
+ ltrx_check_fwupdate_permission(char* name)
+ {
+     int rc = 0;
+@@ -762,6 +783,16 @@ process_open(u_int32_t id)
+                 return;
+         }
+ 
++        if(0==ltrx_check_fwupdate_inprogress(name))
++        {
++                logit("Firmware update already in Progress.");
++                status = SSH2_FX_FAILURE;
++                send_status(id, status);
++                free(dirc);
++                free(dirb);
++                return;
++        }
++
+         free(dirc);
+         free(dirb);
+ 	debug3("request %u: open flags %d", id, pflags);

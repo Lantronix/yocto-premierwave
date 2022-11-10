@@ -1,0 +1,25 @@
+--- openssl-1.0.2u/apps/openssl.c	2016-09-22 03:23:06.000000000 -0700
++++ openssl-1.0.2u-fips/apps/openssl.c	2018-01-09 13:08:20.210781486 -0800
+@@ -215,8 +215,22 @@
+ # define ARGV Argv
+ #endif
+ 
++void set_fips_mode()
++{
++    if (access("/tmp/.fipsModeOn", F_OK) != 0) return;
++
++    if (!FIPS_mode_set(1)) {
++        ERR_load_crypto_strings();
++        ERR_print_errors_fp(stderr);
++        system("logger failed in set_fips_mode in apps/openssl.c");
++    } else {
++        system("logger succeeded in set_fips_mode in apps/openssl.c");
++    }
++}
++
+ int main(int Argc, char *ARGV[])
+ {
++    set_fips_mode();
+     ARGS arg;
+ #define PROG_NAME_SIZE  39
+     char pname[PROG_NAME_SIZE + 1];

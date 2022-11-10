@@ -1,0 +1,16 @@
+diff --git a/sysutil.c b/sysutil.c
+index 2c8cd89..aa09b8f 100644
+--- a/sysutil.c
++++ b/sysutil.c
+@@ -394,7 +394,11 @@ vsf_sysutil_write(const int fd, const void* p_buf, const unsigned int size)
+         ts.tv_sec ++; 
+         vsf_sysutil_syslog("normalize timespec",1); 
+       }
++#if defined(EDS3000PR) || defined(EDS3000PS)
++      if(retry > 25)
++#else
+       if(retry > 5)
++#endif
+       {
+         char msg[1024];
+         snprintf(msg,sizeof(msg),"vsf_sysutil_write: retries:%d, retval:%d, errno:%d %d|%d, sec:%d nsec:%d", retry, retval, saved_errno, EAGAIN, EINTR, ts.tv_sec, ts.tv_nsec);

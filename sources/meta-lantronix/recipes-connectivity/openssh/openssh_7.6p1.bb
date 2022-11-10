@@ -1,9 +1,8 @@
-SUMMARY = "A suite of security-related network utilities based on \
-the SSH protocol including the ssh client and sshd server"
+SUMMARY = "Secure rlogin/rsh/rcp/telnet replacement"
 DESCRIPTION = "Secure rlogin/rsh/rcp/telnet replacement (OpenSSH) \
 Ssh (Secure Shell) is a program for logging into a remote machine \
 and for executing commands on a remote machine."
-HOMEPAGE = "http://www.openssh.com/"
+HOMEPAGE = "http://openssh.org"
 SECTION = "console/network"
 LICENSE = "BSD"
 LIC_FILES_CHKSUM = "file://LICENCE;md5=429658c6612f3a9b1293782366ab29d8"
@@ -11,7 +10,7 @@ LIC_FILES_CHKSUM = "file://LICENCE;md5=429658c6612f3a9b1293782366ab29d8"
 DEPENDS = "zlib openssl"
 DEPENDS += "${@bb.utils.contains('DISTRO_FEATURES', 'pam', 'libpam', '', d)}"
 
-SRC_URI = "http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${PV}.tar.gz \
+SRC_URI = "ftp://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${PV}.tar.gz \
            file://sshd_config \
            file://ssh_config \
            file://init \
@@ -21,14 +20,16 @@ SRC_URI = "http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${PV}.tar
            file://sshdgenkeys.service \
            file://volatiles.99_sshd \
            file://run-ptest \
-           file://fix-potential-signed-overflow-in-pointer-arithmatic.patch \
-           file://sshd_check_keys \
-           file://add-test-support-for-busybox.patch \
-           file://openssh-10-set_fips_mode.patch \
+           file://CVE-2016-1907_upstream_commit.patch \
+           file://CVE-2015-8325.patch \
+           file://openssh-10-set_fips_mode.patch \       
            file://openssh-11-sets_rsa_key_size.patch \
-	   file://openssh-12-sftp_firmware_upgrade.patch \
-	   file://openssh-13-sftp_firmware_upgrade.patch \
-	   file://openssh-14-sftp_winscp_firmware_upgrade_fix.patch \
+           file://openssh-12-sftp_firmware_upgrade.patch \
+           file://openssh-13-sftp_firmware_upgrade.patch \
+           file://openssh-14-sftp_winscp_firmware_upgrade_fix.patch \
+           file://openssh-15-openssl-1.1.1-fix.patch.openssl_1_1_fix \
+           file://openssh-16-removing-fips.patch.openssl_1_1_fix \
+           file://openssh-17-sftp_firmware_upgrade_details.patch \
            "
 
 PAM_SRC_URI = "file://sshd"
@@ -115,7 +116,6 @@ do_install_append () {
 	echo "HostKey /var/run/ssh/ssh_host_rsa_key" >> ${D}${sysconfdir}/ssh/sshd_config_readonly
 	echo "HostKey /var/run/ssh/ssh_host_dsa_key" >> ${D}${sysconfdir}/ssh/sshd_config_readonly
 	echo "HostKey /var/run/ssh/ssh_host_ecdsa_key" >> ${D}${sysconfdir}/ssh/sshd_config_readonly
-	echo "HostKey /var/run/ssh/ssh_host_ed25519_key" >> ${D}${sysconfdir}/ssh/sshd_config_readonly
 
 	install -d ${D}${systemd_unitdir}/system
 	install -c -m 0644 ${WORKDIR}/sshd.socket ${D}${systemd_unitdir}/system
@@ -124,17 +124,11 @@ do_install_append () {
 	sed -i -e 's,@BASE_BINDIR@,${base_bindir},g' \
 		-e 's,@SBINDIR@,${sbindir},g' \
 		-e 's,@BINDIR@,${bindir},g' \
-		-e 's,@LIBEXECDIR@,${libexecdir}/${BPN},g' \
 		${D}${systemd_unitdir}/system/sshd.socket ${D}${systemd_unitdir}/system/*.service
-
-	sed -i -e 's,@LIBEXECDIR@,${libexecdir}/${BPN},g' \
-		${D}${sysconfdir}/init.d/sshd
-
-	install -D -m 0755 ${WORKDIR}/sshd_check_keys ${D}${libexecdir}/${BPN}/sshd_check_keys
 }
 
 do_install_ptest () {
-	sed -i -e "s|^SFTPSERVER=.*|SFTPSERVER=${libexecdir}/sftp-server|" regress/test-exec.sh
+	sed -i -e "s|^SFTPSERVER=.*|SFTPSERVER=${libdir}/${PN}/sftp-server|" regress/test-exec.sh
 	cp -r regress ${D}${PTEST_PATH}
 }
 
@@ -145,7 +139,6 @@ FILES_${PN}-scp = "${bindir}/scp.${BPN}"
 FILES_${PN}-ssh = "${bindir}/ssh.${BPN} ${sysconfdir}/ssh/ssh_config"
 FILES_${PN}-sshd = "${sbindir}/sshd ${sysconfdir}/init.d/sshd ${systemd_unitdir}/system"
 FILES_${PN}-sshd += "${sysconfdir}/ssh/moduli ${sysconfdir}/ssh/sshd_config ${sysconfdir}/ssh/sshd_config_readonly ${sysconfdir}/default/volatiles/99_sshd ${sysconfdir}/pam.d/sshd"
-FILES_${PN}-sshd += "${libexecdir}/${BPN}/sshd_check_keys"
 FILES_${PN}-sftp = "${bindir}/sftp"
 FILES_${PN}-sftp-server = "${libexecdir}/sftp-server"
 FILES_${PN}-misc = "${bindir}/ssh* ${libexecdir}/ssh*"

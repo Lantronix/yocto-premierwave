@@ -1,0 +1,31 @@
+diff -Naur openssh-7.6p1/sshd.c openssh-7.6p1_new/sshd.c
+--- openssh-7.6p1/sshd.c	2020-04-23 12:52:08.234814222 +0530
++++ openssh-7.6p1_new/sshd.c	2020-04-23 12:55:31.632833022 +0530
+@@ -1348,19 +1348,6 @@
+ #endif /* IP_OPTIONS */
+ }
+ 
+-static void set_fips_mode()
+-{
+-    error("set_fips_mode");
+-    if (access("/tmp/.fipsModeOn", F_OK) != 0) return;
+-
+-    if (!FIPS_mode_set(1)) {
+-        ERR_load_crypto_strings();
+-        ERR_print_errors_fp(stderr);
+-        error("failed in set_fips_mode in sshd.c");
+-    } else {
+-        error("succeeded in set_fips_mode in sshd.c");
+-    }
+-}
+ 
+ /*
+  * Main program for the daemon.
+@@ -1391,7 +1378,6 @@
+ #ifdef HAVE_SECUREWARE
+ 	(void)set_auth_parameters(ac, av);
+ #endif
+-    set_fips_mode();
+ 	__progname = ssh_get_progname(av[0]);
+ 
+ 	/* Save argv. Duplicate so setproctitle emulation doesn't clobber it */

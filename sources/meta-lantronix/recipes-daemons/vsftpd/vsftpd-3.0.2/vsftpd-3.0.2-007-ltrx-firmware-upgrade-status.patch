@@ -1,0 +1,63 @@
+diff -Naur vsftpd-3.0.2/postlogin.c ltrx-vsftpd-3.0.2/postlogin.c
+--- vsftpd-3.0.2/postlogin.c	2019-02-07 23:21:13.318365587 +0530
++++ ltrx-vsftpd-3.0.2/postlogin.c	2019-02-07 23:29:22.369312707 +0530
+@@ -31,6 +31,10 @@
+ #include <libgen.h>
+ #include <limits.h>
+ #include <stdio.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include <stdbool.h>
+ 
+ /* Private local functions */
+ static void handle_pwd(struct vsf_session* p_sess);
+@@ -84,6 +88,12 @@
+ static int data_transfer_checks_ok(struct vsf_session* p_sess);
+ static void resolve_tilde(struct mystr* p_str, struct vsf_session* p_sess);
+ 
++static bool FileExists(const char *path)
++{
++    struct stat st;
++    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
++}
++
+ void
+ process_post_login(struct vsf_session* p_sess)
+ {
+@@ -1215,7 +1225,34 @@
+   }
+   else
+   {
+-    vsf_cmdio_write(p_sess, FTP_TRANSFEROK, "Transfer complete.");
++    // LTRX_CHANGES for sending upgrade status to client
++#define MAX_RETRIES 15
++    if (str_equal_text(p_filename, "/tmp/firmware.rom"))
++    {
++        int iterations=0;
++        for(iterations = 0; iterations < MAX_RETRIES ; iterations++)
++        {
++            vsf_sysutil_sleep(1);
++            if(FileExists("/tmp/fwupgrade.success"))
++            {
++                vsf_cmdio_write(p_sess,FTP_TRANSFEROK, "Transfer complete.");
++                break;
++            }
++            else if(FileExists("/tmp/fwupgrade.fail"))
++            {
++                vsf_cmdio_write(p_sess, FTP_BADSENDFILE, "Failure writing to local file.");
++                break;
++            }
++        }
++        if(iterations == MAX_RETRIES)
++        {
++            vsf_cmdio_write(p_sess, FTP_TRANSFEROK, "Transfer complete with errors.");
++        }
++    }
++    else
++    {
++        vsf_cmdio_write(p_sess, FTP_TRANSFEROK, "Transfer complete.");
++    }
+   }
+   check_abor(p_sess);
+ port_pasv_cleanup_out:
