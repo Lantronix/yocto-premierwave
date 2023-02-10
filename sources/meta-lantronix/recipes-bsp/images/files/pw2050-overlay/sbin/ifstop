@@ -28,7 +28,17 @@ ETH_IPV6_FILE="/tmp/ethipv6address"
 BRIDGE_CONF=/etc/brmgr-br0
 
 logger -p "user.debug" "ifstop: $IFCNAME"
-
+#if this is the WAN interface, do not send packets unless we have a IP address
+if [ -f /etc/sysconfig/network-scripts/ifcfg-vlan0 ]; then
+    . /etc/sysconfig/network-scripts/ifcfg-vlan0
+    if [ "$ONBOOT" == "yes" -a "$WAN_IF" == "$IFCNAME" -a "$LINK_IP_FORWARDING" == "yes" ]; then
+        echo 0 > /proc/sys/net/ipv4/ip_forward
+        echo 0 > /proc/sys/net/ipv6/conf/all/forwarding
+        iptables -w -I FORWARD -o $IFCNAME -p all -j REJECT
+        iptables -w -I FORWARD -i $IFCNAME -p all -j REJECT
+		logger -p "user.debug" "ifstop: $IFCNAME, gateway mode"
+    fi
+fi
 if [ ! -f $LTRX_NET_COMMON ]; then
     logger -p "user.err" "ifstop: missing network script"
     rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
@@ -117,7 +127,6 @@ sysctl -w net.ipv6.conf.$IFCNAME.accept_ra=0
 #run network script to update resolv.conf and routes etc.
 . $LTRX_NET_COMMON
 ltrx_start_network $IFCNAME
-
 logger -p "user.debug" "ifstop: $IFCNAME completed"
 rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
 exit 0
