@@ -13,7 +13,355 @@
    <!ATTLIST value name CDATA #IMPLIED>
 ]>
 <configrecord version = "0.1.0.0T0">
-   <configgroup name = "wlan profile" instance = "default_infrastructure_profile">
+    <configgroup name = "xml import control">
+       <configitem name = "restore factory configuration">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "delete http authentication uris">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "http authentication uri delete">
+           <value name = "name"></value>
+       </configitem>
+       <configitem name = "delete wlan profiles">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "wlan profile delete">
+           <value name = "name"></value>
+       </configitem>
+       <configitem name = "missing values">
+           <value>set to default</value>
+       </configitem>
+       <configitem name = "reboot">
+           <value>disable</value>
+       </configitem>
+    </configgroup>
+    <configgroup name = "bluetooth">
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+    </configgroup>
+    <configgroup name = "discovery">
+        <configitem name = "state">
+            <value>enable</value>
+        </configitem>
+        <configitem name = "upnp state">
+            <value>disable</value>
+        </configitem>
+        <configitem name = "upnp port">
+            <value>30179 </value>
+        </configitem>
+    </configgroup>
+    <configgroup name = "tunnel accept" instance = "1">
+       <configitem name = "accept mode">
+           <value>Disable</value>
+       </configitem>
+       <configitem name = "local port">
+           <value>10001 </value>
+       </configitem>
+       <configitem name = "protocol">
+           <value>TCP</value>
+       </configitem>
+       <configitem name = "credentials">
+           <value></value>
+       </configitem>
+       <configitem name = "tcp keep alive">
+           <value>45000 milliseconds</value>
+       </configitem>
+       <configitem name = "tcp keep alive interval">
+           <value>45000 milliseconds</value>
+       </configitem>
+       <configitem name = "tcp keep alive probes">
+           <value>8 </value>
+       </configitem>
+       <configitem name = "aes encrypt key">
+           <value></value>
+       </configitem>
+       <configitem name = "aes decrypt key">
+           <value></value>
+       </configitem>
+       <configitem name = "initial send">
+           <value></value>
+       </configitem>
+       <configitem name = "start character">
+           <value>&amp;#60;control&amp;#62;B</value>
+       </configitem>
+       <configitem name = "flush start character">
+           <value>enable</value>
+       </configitem>
+       <configitem name = "flush serial">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "block serial">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "block network">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "password">
+           <value name = "password"></value>
+           <value name = "prompt">disable</value>
+       </configitem>
+       <configitem name = "email connect">
+           <value>&amp;#60;None&amp;#62;</value>
+       </configitem>
+       <configitem name = "email disconnect">
+           <value>&amp;#60;None&amp;#62;</value>
+       </configitem>
+    </configgroup>
+    <configgroup name = "tunnel accept" instance = "2">
+       <configitem name = "accept mode">
+          <value>Disable</value>
+      </configitem>
+      <configitem name = "local port">
+          <value>10002 </value>
+      </configitem>
+      <configitem name = "protocol">
+          <value>TCP</value>
+      </configitem>
+      <configitem name = "credentials">
+          <value></value>
+      </configitem>
+      <configitem name = "tcp keep alive">
+          <value>45000 milliseconds</value>
+      </configitem>
+      <configitem name = "tcp keep alive interval">
+          <value>45000 milliseconds</value>
+      </configitem>
+      <configitem name = "tcp keep alive probes">
+          <value>8 </value>
+      </configitem>
+      <configitem name = "aes encrypt key">
+          <value></value>
+      </configitem>
+      <configitem name = "aes decrypt key">
+          <value></value>
+      </configitem>
+      <configitem name = "initial send">
+          <value></value>
+      </configitem>
+      <configitem name = "start character">
+          <value>&amp;#60;control&amp;#62;B</value>
+      </configitem>
+      <configitem name = "flush start character">
+          <value>enable</value>
+      </configitem>
+      <configitem name = "flush serial">
+          <value>disable</value>
+      </configitem>
+      <configitem name = "block serial">
+          <value>disable</value>
+      </configitem>
+      <configitem name = "block network">
+          <value>disable</value>
+      </configitem>
+      <configitem name = "password">
+          <value name = "password"></value>
+          <value name = "prompt">disable</value>
+      </configitem>
+      <configitem name = "email connect">
+          <value>&amp;#60;None&amp;#62;</value>
+      </configitem>
+      <configitem name = "email disconnect">
+          <value>&amp;#60;None&amp;#62;</value>
+      </configitem>
+    </configgroup>
+    <configgroup name = "tunnel accept" instance = "3">
+      <configitem name = "accept mode">
+          <value>Disable</value>
+      </configitem>
+      <configitem name = "local port">
+          <value>10003 </value>
+      </configitem>
+      <configitem name = "protocol">
+          <value>TCP</value>
+      </configitem>
+      <configitem name = "credentials">
+          <value></value>
+      </configitem>
+      <configitem name = "tcp keep alive">
+          <value>45000 milliseconds</value>
+      </configitem>
+      <configitem name = "tcp keep alive interval">
+          <value>45000 milliseconds</value>
+      </configitem>
+      <configitem name = "tcp keep alive probes">
+          <value>8 </value>
+      </configitem>
+      <configitem name = "aes encrypt key">
+          <value></value>
+      </configitem>
+      <configitem name = "aes decrypt key">
+          <value></value>
+      </configitem>
+      <configitem name = "initial send">
+          <value></value>
+      </configitem>
+      <configitem name = "start character">
+          <value>&amp;#60;control&amp;#62;B</value>
+      </configitem>
+      <configitem name = "flush start character">
+          <value>enable</value>
+      </configitem>
+      <configitem name = "flush serial">
+          <value>disable</value>
+      </configitem>
+      <configitem name = "block serial">
+          <value>disable</value>
+      </configitem>
+      <configitem name = "block network">
+          <value>disable</value>
+      </configitem>
+      <configitem name = "password">
+          <value name = "password"></value>
+          <value name = "prompt">disable</value>
+      </configitem>
+      <configitem name = "email connect">
+          <value>&amp;#60;None&amp;#62;</value>
+      </configitem>
+      <configitem name = "email disconnect">
+          <value>&amp;#60;None&amp;#62;</value>
+      </configitem>
+    </configgroup>
+    <configgroup name = "line" instance = "1">
+       <configitem name = "name">
+           <value></value>
+       </configitem>
+       <configitem name = "interface">
+           <value>RS485 Half-Duplex</value>
+       </configitem>
+       <configitem name = "termination">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "full duplex termination">
+           <value>Disabled</value>
+       </configitem>
+       <configitem name = "state">
+           <value>enable</value>
+       </configitem>
+       <configitem name = "protocol">
+           <value>None</value>
+       </configitem>
+       <configitem name = "baud rate">
+           <value>115200 bits per second</value>
+       </configitem>
+       <configitem name = "parity">
+           <value>None</value>
+       </configitem>
+       <configitem name = "data bits">
+           <value>8</value>
+       </configitem>
+       <configitem name = "stop bits">
+           <value>1</value>
+       </configitem>
+       <configitem name = "flow control">
+           <value>None</value>
+       </configitem>
+       <configitem name = "xon char">
+           <value>&amp;#60;control&amp;#62;Q</value>
+       </configitem>
+       <configitem name = "xoff char">
+           <value>&amp;#60;control&amp;#62;S</value>
+       </configitem>
+       <configitem name = "gap timer">
+           <value>&amp;#60;None&amp;#62;</value>
+       </configitem>
+       <configitem name = "threshold">
+           <value>56 bytes</value>
+       </configitem>
+   </configgroup>
+   <configgroup name = "line" instance = "2">
+       <configitem name = "name">
+           <value></value>
+       </configitem>
+       <configitem name = "interface">
+           <value>RS485 Half-Duplex</value>
+       </configitem>
+       <configitem name = "termination">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "full duplex termination">
+           <value>Disabled</value>
+       </configitem>
+       <configitem name = "state">
+           <value>enable</value>
+       </configitem>
+       <configitem name = "protocol">
+           <value>None</value>
+       </configitem>
+       <configitem name = "baud rate">
+           <value>115200 bits per second</value>
+       </configitem>
+       <configitem name = "parity">
+           <value>None</value>
+       </configitem>
+       <configitem name = "data bits">
+           <value>8</value>
+       </configitem>
+       <configitem name = "stop bits">
+           <value>1</value>
+       </configitem>
+       <configitem name = "flow control">
+           <value>None</value>
+       </configitem>
+       <configitem name = "xon char">
+           <value>&amp;#60;control&amp;#62;Q</value>
+       </configitem>
+       <configitem name = "xoff char">
+           <value>&amp;#60;control&amp;#62;S</value>
+       </configitem>
+       <configitem name = "gap timer">
+           <value>&amp;#60;None&amp;#62;</value>
+       </configitem>
+       <configitem name = "threshold">
+           <value>56 bytes</value>
+       </configitem>
+    </configgroup>
+    <configgroup name = "usb line" instance = "3">
+       <configitem name = "name">
+           <value></value>
+       </configitem>
+       <configitem name = "interface">
+           <value>USB-CDC-ACM</value>
+       </configitem>
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "protocol">
+           <value>None</value>
+       </configitem>
+       <configitem name = "baud rate">
+           <value>115200 bits per second</value>
+       </configitem>
+       <configitem name = "parity">
+           <value>None</value>
+       </configitem>
+       <configitem name = "data bits">
+           <value>8</value>
+       </configitem>
+       <configitem name = "stop bits">
+           <value>1</value>
+       </configitem>
+       <configitem name = "flow control">
+           <value>Hardware</value>
+       </configitem>
+       <configitem name = "xon char">
+           <value>&amp;#60;control&amp;#62;Q</value>
+       </configitem>
+       <configitem name = "xoff char">
+           <value>&amp;#60;control&amp;#62;S</value>
+       </configitem>
+       <configitem name = "gap timer">
+           <value>&amp;#60;None&amp;#62;</value>
+       </configitem>
+       <configitem name = "threshold">
+           <value>56 bytes</value>
+       </configitem>
+       <configitem name = "line mode">
+           <value>Serial Device</value>
+       </configitem>
+    </configgroup>
+    <configgroup name = "wlan profile" instance = "default_infrastructure_profile">
        <configitem name = "profile type">
            <value>User Defined</value>
        </configitem>
