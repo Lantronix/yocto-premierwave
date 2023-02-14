@@ -36,6 +36,20 @@
            <value>disable</value>
        </configitem>
     </configgroup>
+    <configgroup name = "consoleflow">
+       <configitem name = "state">
+           <value>disable</value>
+       </configitem>
+       <configitem name = "audit log">
+           <value>disable</value>
+       </configitem> 
+    </configgroup>
+    <configgroup name = "diagnostics">
+       <configitem name = "log">
+           <value name = "output">Filesystem</value>
+           <value name = "max length">1000 Kbytes</value>
+       </configitem>
+    </configgroup>
     <configgroup name = "bluetooth">
        <configitem name = "state">
            <value>disable</value>
@@ -243,10 +257,10 @@
            <value>None</value>
        </configitem>
        <configitem name = "baud rate">
-           <value>115200 bits per second</value>
+           <value>9600 bits per second</value>
        </configitem>
        <configitem name = "parity">
-           <value>None</value>
+           <value>Even</value>
        </configitem>
        <configitem name = "data bits">
            <value>8</value>
@@ -290,10 +304,10 @@
            <value>None</value>
        </configitem>
        <configitem name = "baud rate">
-           <value>115200 bits per second</value>
+           <value>9600 bits per second</value>
        </configitem>
        <configitem name = "parity">
-           <value>None</value>
+           <value>Even</value>
        </configitem>
        <configitem name = "data bits">
            <value>8</value>
