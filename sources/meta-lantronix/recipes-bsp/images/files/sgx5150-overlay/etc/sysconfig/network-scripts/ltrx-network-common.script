@@ -55,7 +55,7 @@ restart_l3_bridging()
             # clear out connection tracking
             # GGT-701 BAT-C2/PW2050 with NAT, packets not masqueraded when WLAN link is reconnected
             logger -p "user.debug" "restart_l3_bridging:Gateway mode?, clear connection tracking $$ : ${interface} $ip"
-            conntrack -F conntrack
+            #conntrack -F conntrack
         fi
     fi
     #bridging WLAN interface

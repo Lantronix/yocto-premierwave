@@ -3,7 +3,7 @@ HOMEPAGE = "http://www.zeromq.org"
 LICENSE = "LGPLv3+"
 LIC_FILES_CHKSUM = "file://COPYING.LESSER;md5=d5311495d952062e0e4fbba39cbf3de1"
 
-SRC_URI = "http://download.zeromq.org/zeromq-${PV}.tar.gz \
+SRC_URI = "https://github.com/zeromq/zeromq4-x/releases/download/v${PV}/zeromq-${PV}.tar.gz \
            file://run-ptest \
            "
 SRC_URI[md5sum] = "f3c3defbb5ef6cc000ca65e529fdab3b"

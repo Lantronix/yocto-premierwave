@@ -8,3 +8,4 @@ devpts			/dev/pts		devpts	defaults,gid=5,mode=620	0	0
 tmpfs			/tmp			tmpfs	defaults		0	0
 sysfs			/sys			sysfs	defaults		0	0
 debugfs			/sys/kernel/debug	debugfs	defaults,noauto		0	0
+tmpfs                   /dev/shm                tmpfs   defaults,size=10M       0       0

@@ -75,7 +75,14 @@ else
     BRIDGE_ETHDEV="eth0"
     BRIDGE_WLANDEV="wlan0"
 fi
-
+countIPv4addresses=0
+if  [ "$IPV4" = "yes" ]; then
+    countIPv4addresses=$((countIPv4addresses+1))
+fi
+countIPv6addresses=0
+if  [ "$IPV6" = "yes" ]; then
+    countIPv6addresses=$((countIPv6addresses+1))
+fi
 if [ $BRIDGE = "yes" -a $IFCNAME = $BRIDGE_WLANDEV ] ; then
     echo 1 > /proc/sys/net/ipv4/conf/$IFCNAME/route_localnet
 fi
@@ -669,7 +676,37 @@ if [ -f /etc/sysconfig/dhcpd ]; then
         fi
     fi
 fi
-
+#if this is the WAN interface, do not send packets unless we have a IP address
+if [ -f /etc/sysconfig/network-scripts/ifcfg-vlan0 ]; then
+    . /etc/sysconfig/network-scripts/ifcfg-vlan0
+    if [ "$ONBOOT" == "yes" -a "$WAN_IF" == "$IFCNAME" -a "$LINK_IP_FORWARDING" == "yes" ]; then
+        retries=0
+        maxretries=10
+        while [ 1 ]; do
+            countIPv4=`(ifconfig $IFCNAME;ifconfig $IFCNAME:avahi) 2>/dev/null | grep -e "inet addr" | wc -l`
+            countIPv6=`(ifconfig $IFCNAME;ifconfig $IFCNAME:avahi) 2>/dev/null | grep -e "inet6 addr" | grep -v " fe80::" | wc -l`
+            logger -p "user.debug" "ifstart: $IFCNAME IP addresses v4:($countIPv4/$countIPv4addresses), v6:($countIPv4/$countIPv4addresses), retries:$retries/$maxretries"
+            if [ $countIPv4 -ge $countIPv4addresses -a $countIPv6 -ge $countIPv6addresses ]; then
+                logger -p "user.debug" "ifstart: $IFCNAME IP addresses v4:($countIPv4/$countIPv4addresses), v6:($countIPv4/$countIPv4addresses), retries:$retries/$maxretries"
+                break
+            fi
+            if [ $retries -gt $maxretries ]; then
+                logger -p "user.warn" "ifstart: $IFCNAME IP addresses v4:($countIPv4/$countIPv4addresses), v6:($countIPv4/$countIPv4addresses), retries:$retries/$maxretries"
+                break
+            fi
+            usleep 500000
+            retries=$((retries+1))
+        done
+        sleep 1
+        iptables -w -D FORWARD -o $IFCNAME -p all -j REJECT
+        iptables -w -D FORWARD -i $IFCNAME -p all -j REJECT
+		#sysctl -w net.ipv4.conf.$IFCNAME.send_redirects=1
+		#sysctl -w net.ipv4.conf.all.rp_filter=1
+        echo 1 > /proc/sys/net/ipv4/ip_forward
+        echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+		logger -p "user.debug" "ifstart: $IFCNAME, gateway mode"
+    fi
+fi
 logger -p "user.debug" "ifstart: interface: $IFCNAME completed"
 rmdir /var/lock/ltrx_if_start_stop_$IFCNAME
 exit 0

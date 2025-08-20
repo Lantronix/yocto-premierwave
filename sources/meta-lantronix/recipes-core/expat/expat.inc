@@ -4,7 +4,7 @@ HOMEPAGE = "http://github.com/libexpat/libexpat/releases/download/"
 SECTION = "libs"
 LICENSE = "MIT"
 
-SRC_URI = "${HOMEPAGE}/R_2_4_8/expat-${PV}.tar.gz \
+SRC_URI = "${HOMEPAGE}/R_2_5_0/expat-${PV}.tar.gz \
           file://buildroot-libtool-v2.4.4.patch"
 
 inherit autotools lib_package gzipnative
